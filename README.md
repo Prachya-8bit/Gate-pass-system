@@ -1,4 +1,4 @@
-# SYS Gate Pass
+# Gate Pass
 
 Factory gate pass and man-day tracking system for a Thai industrial site. Contractors register workers on arrival; an admin dashboard tracks man-days per company and accident history. The UI is in Thai.
 
