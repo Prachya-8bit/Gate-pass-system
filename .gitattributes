@@ -1,0 +1,16 @@
+# Normalize all text files to LF on commit (works for both WSL and Windows).
+# This prevents CRLF from sneaking into files that run inside Linux containers.
+
+*           text=auto eol=lf
+
+# PowerShell scripts must stay CRLF or they error on Windows
+*.ps1       text eol=crlf
+*.psm1      text eol=crlf
+
+# Binary files — never touch line endings
+*.png       binary
+*.jpg       binary
+*.ico       binary
+*.db        binary
+*.db-shm    binary
+*.db-wal    binary

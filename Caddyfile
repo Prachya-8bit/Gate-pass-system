@@ -1,0 +1,22 @@
+# Replace your-domain.com with your actual domain before deploying.
+# Caddy will automatically obtain and renew a Let's Encrypt certificate.
+
+your-domain.com {
+    reverse_proxy app:3000
+
+    # Security headers
+    header {
+        X-Frame-Options DENY
+        X-Content-Type-Options nosniff
+        Referrer-Policy strict-origin-when-cross-origin
+        -Server
+    }
+
+    # Logging
+    log {
+        output file /var/log/caddy/access.log {
+            roll_size 10MB
+            roll_keep 5
+        }
+    }
+}

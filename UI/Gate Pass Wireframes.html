@@ -1,0 +1,578 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Gate Pass System — Wireframes</title>
+<link href="https://fonts.googleapis.com/css2?family=Caveat:wght@400;600;700&display=swap" rel="stylesheet" />
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+<script type="text/babel" src="design-canvas.jsx"></script>
+<style>* { box-sizing: border-box; margin: 0; padding: 0; }</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+
+const CF = { fontFamily: "'Caveat', cursive" };
+
+// ── Shared style tokens ──────────────────────────────────────────────────────
+const T = {
+  screen:   { background: '#fff', ...CF, color: '#1a1a1a', overflow: 'hidden' },
+  bar:      { background: '#1a1a1a', color: '#fff', padding: '10px 16px', fontSize: 16, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 8, ...CF },
+  barBlue:  { background: '#1d5fa3', color: '#fff', padding: '14px 18px', ...CF },
+  body:     { padding: 16 },
+  lbl:      { fontSize: 12, color: '#666', marginBottom: 3, display: 'block' },
+  inp:      { border: '2px solid #bbb', borderRadius: 4, background: '#f9f9f9', height: 38, width: '100%', marginBottom: 12, padding: '0 10px', ...CF, fontSize: 14, color: '#aaa', display: 'flex', alignItems: 'center' },
+  inpLg:    { border: '2px solid #bbb', borderRadius: 6, background: '#f9f9f9', height: 52, width: '100%', marginBottom: 0, padding: '0 14px', ...CF, fontSize: 15, color: '#aaa', display: 'flex', alignItems: 'center' },
+  btn:      { background: '#1a1a1a', color: '#fff', borderRadius: 6, padding: '11px 0', width: '100%', textAlign: 'center', ...CF, fontSize: 16, fontWeight: 700, marginTop: 4, cursor: 'default' },
+  btnSec:   { background: '#fff', color: '#444', border: '2px solid #aaa', borderRadius: 6, padding: '10px 0', width: '100%', textAlign: 'center', ...CF, fontSize: 15, marginTop: 4, cursor: 'default' },
+  btnBlue:  { background: '#1d5fa3', color: '#fff', borderRadius: 6, padding: '13px 0', width: '100%', textAlign: 'center', ...CF, fontSize: 17, fontWeight: 700, cursor: 'default' },
+  card:     { border: '2px solid #ddd', borderRadius: 6, padding: '10px 12px', marginBottom: 10, background: '#fafafa' },
+  note:     { fontSize: 11, color: '#c05800', fontStyle: 'italic', borderLeft: '2px solid #c05800', paddingLeft: 6, marginBottom: 10, lineHeight: 1.5 },
+  divider:  { borderTop: '2px dashed #ddd', margin: '14px 0' },
+  tagGreen: { display: 'inline-block', background: '#e6f5e6', border: '1.5px solid #7cba7c', color: '#1a6a1a', borderRadius: 10, padding: '1px 9px', fontSize: 12, ...CF },
+  tagRed:   { display: 'inline-block', background: '#fde8e8', border: '1.5px solid #e08888', color: '#7a2020', borderRadius: 10, padding: '1px 9px', fontSize: 12, ...CF },
+};
+
+// ── Atoms ────────────────────────────────────────────────────────────────────
+const Fld = ({ lbl, hint, sel, date, lg }) => (
+  <div>
+    <span style={T.lbl}>{lbl}</span>
+    <div style={{ ...(lg ? T.inpLg : T.inp), ...(sel || date ? { justifyContent: 'space-between' } : {}) }}>
+      <span>{hint || (date ? 'วว/ดด/ปปปป' : '——')}</span>
+      {sel && <span style={{ fontSize: 12, color: '#bbb' }}>▼</span>}
+      {date && <span style={{ fontSize: 12, color: '#bbb' }}>□</span>}
+    </div>
+  </div>
+);
+
+const Steps = ({ cur, tot }) => (
+  <div style={{ marginBottom: 18 }}>
+    <div style={{ display: 'flex', gap: 5, marginBottom: 5 }}>
+      {Array.from({ length: tot }, (_, i) => (
+        <div key={i} style={{ flex: 1, height: 5, borderRadius: 3, background: i < cur ? '#1a1a1a' : '#ddd' }} />
+      ))}
+    </div>
+    <span style={{ fontSize: 12, color: '#888' }}>ขั้นตอน {cur} / {tot}</span>
+  </div>
+);
+
+const Note = ({ t }) => <div style={T.note}>{t}</div>;
+const Row = ({ children, gap = 8 }) => <div style={{ display: 'flex', gap, alignItems: 'flex-start' }}>{children}</div>;
+const Divider = () => <div style={T.divider} />;
+const SecHead = ({ t, accent = '#1a1a1a' }) => (
+  <div style={{ fontSize: 16, fontWeight: 700, borderLeft: `4px solid ${accent}`, paddingLeft: 8, marginBottom: 14, ...CF }}>{t}</div>
+);
+
+// ── OPTION A · Mobile Stepper ────────────────────────────────────────────────
+
+function A1() {
+  const people = [
+    { name: 'นายสมชาย ใจดี',      id: '1100112345678' },
+    { name: 'นางสาววิภา มีสุข',    id: '3200123456789' },
+    { name: '',                    id: '' },
+  ];
+  return (
+    <div style={T.screen}>
+      <div style={T.bar}>
+        <span style={{ fontSize: 20 }}>🏭</span>
+        <span style={{ flex: 1 }}>ลงทะเบียนผู้รับเหมา</span>
+      </div>
+      <div style={T.body}>
+        <Steps cur={1} tot={3} />
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+          <div style={{ fontSize: 17, fontWeight: 700, ...CF }}>รายชื่อผู้เข้าทำงาน</div>
+          <div style={{ fontSize: 13, background: '#f0f0f0', border: '2px solid #ccc', borderRadius: 10, padding: '2px 10px', ...CF }}>3 / 10 คน</div>
+        </div>
+
+        {/* Column headers */}
+        <div style={{ display: 'flex', gap: 6, marginBottom: 5, paddingLeft: 26, paddingRight: 28 }}>
+          <div style={{ flex: 3, fontSize: 11, color: '#888' }}>ชื่อ-นามสกุล</div>
+          <div style={{ flex: 2, fontSize: 11, color: '#888' }}>เลขบัตร (ตัวเลข 13 หลัก)</div>
+        </div>
+
+        {people.map((p, i) => (
+          <div key={i} style={{ display: 'flex', gap: 6, marginBottom: 7, alignItems: 'center' }}>
+            <div style={{ width: 20, fontSize: 11, color: '#999', flexShrink: 0, textAlign: 'center', ...CF }}>{i + 1}</div>
+            <div style={{ flex: 3, border: '2px solid ' + (p.name ? '#888' : '#ddd'), borderRadius: 4, height: 36, background: p.name ? '#fff' : '#f9f9f9', padding: '0 8px', display: 'flex', alignItems: 'center', ...CF, fontSize: 13, color: p.name ? '#1a1a1a' : '#ccc' }}>
+              {p.name || '— ชื่อ-นามสกุล —'}
+            </div>
+            <div style={{ flex: 2, border: '2px solid ' + (p.id ? '#888' : '#ddd'), borderRadius: 4, height: 36, background: p.id ? '#fff' : '#f9f9f9', padding: '0 8px', display: 'flex', alignItems: 'center', ...CF, fontSize: 12, color: p.id ? '#1a1a1a' : '#ccc', letterSpacing: p.id ? 1 : 0 }}>
+              {p.id || '1234567890123'}
+            </div>
+            <div style={{ width: 22, height: 22, border: '2px solid #ddd', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, color: '#bbb', flexShrink: 0, cursor: 'default' }}>×</div>
+          </div>
+        ))}
+
+        <div style={{ border: '2px dashed #bbb', borderRadius: 6, padding: '8px 0', textAlign: 'center', ...CF, fontSize: 14, color: '#888', marginBottom: 10, cursor: 'default', marginTop: 2 }}>
+          + เพิ่มคน
+        </div>
+        <Note t="✦ เพิ่มได้สูงสุด 10 คน · เลขบัตรกรอกเฉพาะตัวเลข 13 หลักเท่านั้น" />
+        <Divider />
+        <div style={T.btn}>ถัดไป →</div>
+      </div>
+    </div>
+  );
+}
+
+function A2() {
+  return (
+    <div style={T.screen}>
+      <div style={T.bar}>
+        <span>←</span>
+        <span style={{ flex: 1 }}>รายละเอียดการทำงาน</span>
+      </div>
+      <div style={T.body}>
+        <Steps cur={2} tot={3} />
+        <div style={{ fontSize: 17, fontWeight: 700, marginBottom: 14, ...CF }}>ข้อมูลงาน</div>
+        <Fld lbl="บริษัทที่สังกัด" sel />
+        <Fld lbl="งานที่ทำ / ตำแหน่ง" hint="เช่น ช่างไฟฟ้า, ช่างสี..." />
+        <Fld lbl="พื้นที่ทำงาน (Zone)" hint="เช่น Zone A, อาคาร 2..." />
+        <Row>
+          <div style={{ flex: 1 }}><Fld lbl="วันที่เข้าทำงาน" date /></div>
+          <div style={{ flex: 1 }}><Fld lbl="วันที่สิ้นสุด" date /></div>
+        </Row>
+        <Note t="✦ Man-day = (วันออก − วันเข้า + 1) คำนวณอัตโนมัติ" />
+        <Divider />
+        <Row>
+          <div style={{ flex: 1 }}><div style={T.btnSec}>← ย้อนกลับ</div></div>
+          <div style={{ flex: 2 }}><div style={T.btn}>ถัดไป →</div></div>
+        </Row>
+      </div>
+    </div>
+  );
+}
+
+function A3() {
+  const people = [
+    { name: 'นายสมชาย ใจดี',        id: '1100112345678' },
+    { name: 'นางสาววิภา มีสุข',      id: '3200123456789' },
+    { name: 'นายประวิทย์ เก่งมาก',   id: '4300198765432' },
+  ];
+  return (
+    <div style={T.screen}>
+      <div style={T.bar}><span>←</span><span>ยืนยันข้อมูล</span></div>
+      <div style={T.body}>
+        <Steps cur={3} tot={3} />
+        <div style={{ fontSize: 17, fontWeight: 700, marginBottom: 12, ...CF }}>ตรวจสอบก่อนบันทึก</div>
+
+        {/* Work details */}
+        <div style={T.card}>
+          <div style={{ fontSize: 11, color: '#888', marginBottom: 2 }}>บริษัท</div>
+          <div style={{ fontWeight: 700, marginBottom: 8 }}>บจก. สยามก่อสร้าง</div>
+          <Row>
+            {[['วันเข้า', '11/06/69'], ['วันออก', '20/06/69'], ['Man-day', '10 วัน']].map(([l, v], i) => (
+              <div key={l} style={{ flex: 1 }}>
+                <div style={{ fontSize: 11, color: '#888' }}>{l}</div>
+                <div style={{ fontWeight: 700, color: i === 2 ? '#1a6a1a' : '#1a1a1a', fontSize: i === 2 ? 16 : 14 }}>{v}</div>
+              </div>
+            ))}
+          </Row>
+        </div>
+
+        {/* People list */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+          <div style={{ fontSize: 13, fontWeight: 700, color: '#444', ...CF }}>ผู้เข้าทำงาน</div>
+          <div style={{ fontSize: 12, background: '#f0f0f0', border: '2px solid #ccc', borderRadius: 10, padding: '1px 9px', ...CF }}>3 คน</div>
+        </div>
+        {people.map((p, i) => (
+          <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 10px', background: i % 2 === 0 ? '#fafafa' : '#fff', border: '1.5px solid #eee', borderRadius: 4, marginBottom: 4 }}>
+            <div style={{ width: 20, height: 20, background: '#1a1a1a', color: '#fff', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, flexShrink: 0, ...CF }}>{i + 1}</div>
+            <div style={{ flex: 1, ...CF, fontSize: 13, fontWeight: 600 }}>{p.name}</div>
+            <div style={{ fontSize: 11, color: '#aaa', letterSpacing: 0.5, ...CF }}>{p.id.slice(0, 3)}*******{p.id.slice(-3)}</div>
+          </div>
+        ))}
+
+        <Divider />
+        <div style={{ border: '2px solid #bbb', borderRadius: 6, padding: '10px 12px', marginBottom: 10, display: 'flex', alignItems: 'flex-start', gap: 10 }}>
+          <div style={{ width: 20, height: 20, border: '2px solid #555', borderRadius: 3, flexShrink: 0, marginTop: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13 }}>✓</div>
+          <span style={{ fontSize: 13, lineHeight: 1.4, ...CF }}>ข้าพเจ้าขอยืนยันว่าข้อมูลถูกต้อง และไม่มีประวัติอุบัติเหตุในช่วงเวลานี้</span>
+        </div>
+        <Note t="✦ หากมีอุบัติเหตุ ให้แจ้ง Safety Officer ก่อนบันทึก" />
+        <div style={T.btn}>✓ บันทึกข้อมูล 3 คน</div>
+      </div>
+    </div>
+  );
+}
+
+function A4() {
+  const cos = [
+    { n: 'บจก. สยามก่อสร้าง', d: 245, a: 0 },
+    { n: 'บจก. ไทยอิเล็คทริค', d: 182, a: 0 },
+    { n: 'หจก. พิษณุโลก', d: 98, a: 1 },
+    { n: 'บจก. นวการ', d: 56, a: 0 },
+  ];
+  return (
+    <div style={T.screen}>
+      <div style={T.bar}>
+        <span style={{ flex: 1 }}>สรุป Man-day (Admin)</span>
+        <span style={{ fontSize: 12, background: '#444', borderRadius: 4, padding: '2px 8px' }}>มิ.ย. 2569</span>
+      </div>
+      <div style={T.body}>
+        <Row gap={8}>
+          {[['581', 'Man-days รวม'], ['4', 'บริษัท'], ['1', 'อุบัติเหตุ']].map(([n, l]) => (
+            <div key={l} style={{ flex: 1, border: '2px solid #ddd', borderRadius: 6, padding: '8px 0', textAlign: 'center', background: '#fafafa' }}>
+              <div style={{ fontSize: 22, fontWeight: 700, ...CF }}>{n}</div>
+              <div style={{ fontSize: 11, color: '#777', ...CF }}>{l}</div>
+            </div>
+          ))}
+        </Row>
+        <Divider />
+        <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 10, ...CF }}>รายละเอียดตามบริษัท</div>
+        {cos.map(c => (
+          <div key={c.n} style={{ ...T.card, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <div>
+              <div style={{ fontWeight: 600, fontSize: 14 }}>{c.n}</div>
+              <div style={{ fontSize: 12, color: '#888' }}>สะสม <strong>{c.d}</strong> Man-days</div>
+            </div>
+            <span style={c.a === 0 ? T.tagGreen : T.tagRed}>{c.a === 0 ? '0 อุบัติเหตุ' : `⚠ ${c.a} อุบัติเหตุ`}</span>
+          </div>
+        ))}
+        <Note t="✦ แตะที่บริษัทเพื่อดูประวัติรายคน" />
+      </div>
+    </div>
+  );
+}
+
+// ── OPTION B · Single-Page Form + Admin Table ────────────────────────────────
+
+function B1() {
+  return (
+    <div style={T.screen}>
+      <div style={{ ...T.barBlue }}>
+        <div style={{ fontSize: 20, fontWeight: 700 }}>🏭 Gate Pass Registration</div>
+        <div style={{ fontSize: 13, opacity: 0.8, marginTop: 2 }}>โรงงานนิคมอุตสาหกรรม XYZ — กรอกข้อมูลทุกช่อง</div>
+      </div>
+
+      {/* Live stats strip */}
+      <div style={{ display: 'flex', background: '#e8f0fa', borderBottom: '2px solid #c5d9f5', padding: '10px 16px' }}>
+        {[['1,234', 'Man-days ปีนี้', '#1d5fa3'], ['8', 'บริษัท', '#444'], ['47', 'คนปัจจุบัน', '#1a6a1a']].map(([n, l, c]) => (
+          <div key={l} style={{ flex: 1, textAlign: 'center' }}>
+            <div style={{ fontSize: 20, fontWeight: 700, color: c, ...CF }}>{n}</div>
+            <div style={{ fontSize: 11, color: '#556', ...CF }}>{l}</div>
+          </div>
+        ))}
+      </div>
+
+      <div style={T.body}>
+        <SecHead t="ข้อมูลส่วนตัว" accent="#1d5fa3" />
+        <Fld lbl="ชื่อ - นามสกุล" hint="นาย / นาง / นางสาว..." />
+        <Fld lbl="เลขบัตรประชาชน" hint="x-xxxx-xxxxx-xx-x" />
+        <Fld lbl="เบอร์โทรศัพท์" hint="08x-xxx-xxxx" />
+        <Divider />
+        <SecHead t="รายละเอียดงาน" accent="#1d5fa3" />
+        <Fld lbl="บริษัทที่สังกัด" sel />
+        <Fld lbl="งานที่ทำ / ตำแหน่ง" hint="เช่น ช่างไฟฟ้า, แรงงานทั่วไป..." />
+        <Row>
+          <div style={{ flex: 1 }}><Fld lbl="วันที่เข้าทำงาน" date /></div>
+          <div style={{ flex: 1 }}><Fld lbl="วันที่สิ้นสุด" date /></div>
+        </Row>
+        <Note t="✦ Man-day คำนวณอัตโนมัติจากช่วงวันที่ที่เลือก" />
+        <Divider />
+
+        {/* Man-day preview box */}
+        <div style={{ ...T.card, background: '#f0f6ff', border: '2px solid #c5d9f5', marginBottom: 14 }}>
+          <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 4, ...CF }}>ประมาณการ Man-day</div>
+          <div style={{ fontSize: 28, fontWeight: 700, color: '#1d5fa3', ...CF }}>— วัน</div>
+          <div style={{ fontSize: 12, color: '#889', ...CF }}>บจก. [เลือกบริษัท] · สะสมปีนี้: — Man-days</div>
+        </div>
+
+        <div style={T.btnBlue}>✓ บันทึกและรับ Gate Pass</div>
+      </div>
+    </div>
+  );
+}
+
+function B2() {
+  const rows = [
+    { n: 'บจก. สยามก่อสร้าง',     w: 23, d: 712, cur: 8,  a: 0 },
+    { n: 'บจก. ไทยอิเล็คทริค',    w: 18, d: 498, cur: 5,  a: 0 },
+    { n: 'หจก. พิษณุโลก วิศวกรรม', w: 11, d: 280, cur: 3,  a: 1 },
+    { n: 'บจก. นวการก่อสร้าง',    w:  7, d: 190, cur: 2,  a: 0 },
+    { n: 'บจก. เอ็กซ์เพรส เซอร์วิส', w: 5, d: 88, cur: 1,  a: 0 },
+  ];
+  const cols = ['บริษัทที่สังกัด', 'ช่างทั้งหมด', 'Man-days สะสม', 'คนปัจจุบัน', 'สถานะ'];
+  return (
+    <div style={T.screen}>
+      <div style={T.bar}>
+        <span style={{ flex: 1 }}>Admin — รายงาน Man-day รายบริษัท</span>
+        <div style={{ display: 'flex', gap: 6 }}>
+          <span style={{ background: '#444', borderRadius: 4, padding: '2px 9px', fontSize: 12 }}>ปี 2569</span>
+          <span style={{ background: '#1d5fa3', borderRadius: 4, padding: '2px 9px', fontSize: 12 }}>⬇ Export</span>
+        </div>
+      </div>
+
+      {/* KPI strip */}
+      <div style={{ display: 'flex', background: '#f5f7fa', borderBottom: '2px solid #ddd', padding: '10px 20px', gap: 28 }}>
+        {[['1,768', 'Man-days รวม', '#1d5fa3'], ['64', 'คนทั้งหมด', '#333'], ['1', 'อุบัติเหตุ', '#b02020'], ['4', 'บริษัทปลอดภัย', '#1a6a1a']].map(([n, l, c]) => (
+          <div key={l} style={{ textAlign: 'center' }}>
+            <div style={{ fontSize: 24, fontWeight: 700, color: c, ...CF }}>{n}</div>
+            <div style={{ fontSize: 11, color: '#777', ...CF }}>{l}</div>
+          </div>
+        ))}
+      </div>
+
+      <div style={{ padding: '0 20px 16px' }}>
+        {/* Table */}
+        <div style={{ display: 'grid', gridTemplateColumns: '2.2fr 1fr 1.2fr 1fr 1.1fr', marginTop: 14 }}>
+          {cols.map(h => (
+            <div key={h} style={{ fontWeight: 700, fontSize: 12, color: '#555', borderBottom: '2.5px solid #1a1a1a', paddingBottom: 6, paddingRight: 8, ...CF }}>{h}</div>
+          ))}
+          {rows.map((r, i) => (
+            <React.Fragment key={i}>
+              <div style={{ padding: '8px 0', borderBottom: '1px dashed #e0e0e0', fontSize: 13, ...CF }}>{r.n}</div>
+              <div style={{ padding: '8px 0', borderBottom: '1px dashed #e0e0e0', textAlign: 'center', fontSize: 13, ...CF }}>{r.w}</div>
+              <div style={{ padding: '8px 0', borderBottom: '1px dashed #e0e0e0', textAlign: 'center', fontSize: 15, fontWeight: 700, ...CF }}>{r.d}</div>
+              <div style={{ padding: '8px 0', borderBottom: '1px dashed #e0e0e0', textAlign: 'center', fontSize: 13, color: '#1d5fa3', ...CF }}>{r.cur}</div>
+              <div style={{ padding: '8px 0', borderBottom: '1px dashed #e0e0e0', ...CF }}>
+                <span style={r.a === 0 ? T.tagGreen : T.tagRed}>{r.a === 0 ? '✓ ปลอดภัย' : `⚠ ${r.a} อุบัติเหตุ`}</span>
+              </div>
+            </React.Fragment>
+          ))}
+        </div>
+        <Note t="✦ คลิกที่ชื่อบริษัทเพื่อดูรายชื่อช่าง / ประวัติรายคน / ส่งออก Excel" />
+      </div>
+    </div>
+  );
+}
+
+// ── OPTION C · Kiosk / Tablet ────────────────────────────────────────────────
+
+function C1() {
+  const cos = ['บจก. สยามก่อสร้าง', 'บจก. ไทยอิเล็คทริค', 'หจก. พิษณุโลก', 'บจก. นวการ', 'บจก. เอ็กซ์เพรส', 'อื่นๆ...'];
+  return (
+    <div style={T.screen}>
+      {/* Kiosk header */}
+      <div style={{ background: '#111', color: '#fff', padding: '18px 26px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', ...CF }}>
+        <div>
+          <div style={{ fontSize: 26, fontWeight: 700 }}>🏭 GATE PASS SYSTEM</div>
+          <div style={{ fontSize: 14, color: '#aaa', marginTop: 2 }}>กรุณากรอกข้อมูลก่อนเข้าพื้นที่โรงงาน</div>
+        </div>
+        <div style={{ textAlign: 'right' }}>
+          <div style={{ fontSize: 13, color: '#aaa' }}>วันที่</div>
+          <div style={{ fontSize: 17, fontWeight: 600 }}>11 มิ.ย. 2569</div>
+        </div>
+      </div>
+
+      <div style={{ padding: 26 }}>
+        {/* Step 1: Company */}
+        <div style={{ fontSize: 18, fontWeight: 700, marginBottom: 14, ...CF }}>
+          <span style={{ background: '#111', color: '#fff', borderRadius: '50%', width: 26, height: 26, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, marginRight: 8 }}>1</span>
+          เลือกบริษัทที่สังกัด
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10, marginBottom: 26 }}>
+          {cos.map((c, i) => (
+            <div key={c} style={{
+              border: i === 0 ? '3px solid #111' : '2px solid #ccc',
+              borderRadius: 8, padding: '16px 12px', textAlign: 'center',
+              background: i === 0 ? '#111' : '#fafafa',
+              color: i === 0 ? '#fff' : '#444',
+              ...CF, fontSize: 15, fontWeight: 600, cursor: 'default',
+              minHeight: 56, display: 'flex', alignItems: 'center', justifyContent: 'center',
+            }}>{c}</div>
+          ))}
+        </div>
+
+        {/* Step 2: Personal info */}
+        <div style={{ fontSize: 18, fontWeight: 700, marginBottom: 14, ...CF }}>
+          <span style={{ background: '#111', color: '#fff', borderRadius: '50%', width: 26, height: 26, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, marginRight: 8 }}>2</span>
+          ข้อมูลส่วนตัว
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 26 }}>
+          {[
+            { lbl: 'ชื่อ - นามสกุล', hint: 'กรอกชื่อ-นามสกุล' },
+            { lbl: 'เลขบัตรประชาชน', hint: 'x-xxxx-xxxxx-xx-x' },
+            { lbl: 'วันที่เข้าทำงาน', date: true },
+            { lbl: 'วันที่สิ้นสุดงาน', date: true },
+          ].map(f => (
+            <div key={f.lbl}>
+              <span style={{ ...T.lbl, fontSize: 14 }}>{f.lbl}</span>
+              <div style={{ ...T.inpLg, ...(f.date ? { justifyContent: 'space-between' } : {}) }}>
+                <span>{f.hint || (f.date ? 'วว/ดด/ปปปป' : '——')}</span>
+                {f.date && <span style={{ color: '#bbb' }}>□</span>}
+              </div>
+            </div>
+          ))}
+        </div>
+
+        <div style={{ ...T.btn, fontSize: 20, padding: '16px 0', borderRadius: 10, letterSpacing: 0.5 }}>
+          ✓ ยืนยันและออก Gate Pass
+        </div>
+        <Note t="✦ กดปุ่มยืนยัน → ระบบพิมพ์ใบผ่านประตูอัตโนมัติ" />
+      </div>
+    </div>
+  );
+}
+
+function C2() {
+  return (
+    <div style={T.screen}>
+      <div style={{ background: '#1a6a1a', color: '#fff', padding: '18px 26px', display: 'flex', alignItems: 'center', gap: 14, ...CF }}>
+        <span style={{ fontSize: 36, lineHeight: 1 }}>✓</span>
+        <div>
+          <div style={{ fontSize: 24, fontWeight: 700 }}>บันทึกสำเร็จ!</div>
+          <div style={{ fontSize: 14, opacity: 0.85 }}>Gate Pass ออกแล้ว — เลขที่ GP-2569-0421</div>
+        </div>
+      </div>
+
+      <div style={{ padding: 26 }}>
+        {/* Pass slip */}
+        <div style={{ border: '3px solid #333', borderRadius: 10, padding: 20, marginBottom: 20, position: 'relative' }}>
+          <div style={{ position: 'absolute', top: 10, right: 14, fontSize: 11, color: '#888', background: '#f0f0f0', borderRadius: 4, padding: '2px 7px', ...CF }}>ใช้ได้ถึง 20/06/2569</div>
+
+          <div style={{ fontSize: 12, color: '#888', marginBottom: 3, ...CF }}>ชื่อ-นามสกุล</div>
+          <div style={{ fontSize: 24, fontWeight: 700, ...CF }}>นายสมชาย ใจดี</div>
+          <div style={{ fontSize: 12, color: '#888', marginTop: 10, marginBottom: 3, ...CF }}>บริษัทที่สังกัด</div>
+          <div style={{ fontSize: 17, fontWeight: 600, ...CF }}>บจก. สยามก่อสร้าง</div>
+
+          <div style={{ display: 'flex', gap: 20, marginTop: 14 }}>
+            {[['วันเข้า', '11/06/69'], ['วันออก', '20/06/69'], ['Man-day', '10 วัน']].map(([l, v], i) => (
+              <div key={l}>
+                <div style={{ fontSize: 11, color: '#888', ...CF }}>{l}</div>
+                <div style={{ fontWeight: 700, fontSize: i === 2 ? 20 : 15, color: i === 2 ? '#1a6a1a' : '#1a1a1a', ...CF }}>{v}</div>
+              </div>
+            ))}
+          </div>
+
+          {/* QR placeholder */}
+          <div style={{
+            position: 'absolute', bottom: 16, right: 16,
+            width: 72, height: 72,
+            background: 'repeating-linear-gradient(45deg,#e8e8e8,#e8e8e8 3px,#f8f8f8 3px,#f8f8f8 8px)',
+            border: '2px solid #ccc', borderRadius: 4,
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            fontSize: 10, color: '#aaa', textAlign: 'center', ...CF,
+          }}>QR<br/>Code</div>
+        </div>
+
+        <Row gap={12}>
+          <div style={{ flex: 1 }}><div style={{ ...T.btn, background: '#333' }}>🖨 พิมพ์ใบผ่านประตู</div></div>
+          <div style={{ flex: 1 }}><div style={T.btnSec}>เสร็จสิ้น / Done</div></div>
+        </Row>
+      </div>
+    </div>
+  );
+}
+
+function C3() {
+  const bars = [
+    { n: 'บจก. สยามก่อสร้าง',     d: 712, pct: 40, safe: true },
+    { n: 'บจก. ไทยอิเล็คทริค',    d: 498, pct: 28, safe: true },
+    { n: 'หจก. พิษณุโลก',        d: 280, pct: 16, safe: false },
+    { n: 'บจก. นวการ',           d: 190, pct: 11, safe: true },
+    { n: 'บจก. เอ็กซ์เพรส',      d:  88, pct:  5, safe: true },
+  ];
+  return (
+    <div style={T.screen}>
+      <div style={T.bar}>
+        <span style={{ flex: 1 }}>Admin Dashboard — Man-day Safety Tracker</span>
+        <span style={{ background: '#1d5fa3', borderRadius: 4, padding: '2px 10px', fontSize: 12 }}>ปี 2569</span>
+      </div>
+
+      <div style={{ padding: 20 }}>
+        {/* KPI cards */}
+        <div style={{ display: 'flex', gap: 12, marginBottom: 20 }}>
+          {[['1,768', 'Man-days รวม', '#1d5fa3'], ['186', 'วันสะสมปลอดอุบัติเหตุ', '#1a6a1a'], ['64', 'ผู้รับเหมาทั้งหมด', '#444'], ['1', 'เหตุการณ์อุบัติเหตุ', '#b02020']].map(([n, l, c]) => (
+            <div key={l} style={{ flex: 1, border: '2px solid #e0e0e0', borderRadius: 8, padding: '12px 14px', background: '#fafafa', textAlign: 'center' }}>
+              <div style={{ fontSize: 30, fontWeight: 700, color: c, ...CF }}>{n}</div>
+              <div style={{ fontSize: 12, color: '#777', lineHeight: 1.3, ...CF }}>{l}</div>
+            </div>
+          ))}
+        </div>
+
+        <div style={{ display: 'flex', gap: 22 }}>
+          {/* Bar chart - companies */}
+          <div style={{ flex: 1 }}>
+            <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 12, ...CF }}>Man-day แยกตามบริษัท</div>
+            {bars.map(r => (
+              <div key={r.n} style={{ marginBottom: 12 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4, ...CF, fontSize: 13 }}>
+                  <span style={{ fontWeight: 600 }}>{r.n}</span>
+                  <span style={{ color: '#777' }}>{r.d}&nbsp;<span style={r.safe ? T.tagGreen : T.tagRed}>{r.safe ? '✓' : '⚠'}</span></span>
+                </div>
+                <div style={{ height: 12, background: '#eee', borderRadius: 6, overflow: 'hidden' }}>
+                  <div style={{ height: '100%', width: `${r.pct}%`, background: r.safe ? '#1d5fa3' : '#c03030', borderRadius: 6 }} />
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* Right side */}
+          <div style={{ width: 260 }}>
+            <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 10, ...CF }}>Man-day รายเดือน</div>
+            <div style={{
+              height: 120, borderRadius: 8, border: '2px dashed #ccc',
+              background: 'repeating-linear-gradient(45deg,#f2f2f2,#f2f2f2 4px,#fafafa 4px,#fafafa 12px)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              color: '#bbb', fontSize: 14, marginBottom: 16, ...CF,
+            }}>📈 Bar / Line Chart</div>
+
+            <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 8, ...CF }}>ลงทะเบียนล่าสุด</div>
+            {[
+              'สมชาย ใจดี — บจก. สยามฯ — 10 วัน',
+              'วิชัย พงษ์ดี — บจก. ไทยฯ — 7 วัน',
+              'สมศรี รักดี — หจก. พิษณุฯ — 5 วัน',
+            ].map((e, i) => (
+              <div key={i} style={{ fontSize: 12, padding: '5px 0', borderBottom: '1px dashed #eee', color: '#555', ...CF }}>{e}</div>
+            ))}
+            <Note t="✦ คลิกที่ชื่อเพื่อดูรายละเอียด" />
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Root ─────────────────────────────────────────────────────────────────────
+function App() {
+  return (
+    <DesignCanvas>
+      <DCSection id="optA" title="Option A · Mobile Stepper"
+        subtitle="ฟอร์มแบบ step-by-step บนมือถือ — ง่าย ชัดเจน ไม่ล้น">
+        <DCArtboard id="a1" label="A1 · Step 1 – รายชื่อผู้เข้าทำงาน" width={375} height={570}>
+          <A1 />
+        </DCArtboard>
+        <DCArtboard id="a2" label="A2 · Step 2 – รายละเอียดงาน" width={375} height={560}>
+          <A2 />
+        </DCArtboard>
+        <DCArtboard id="a3" label="A3 · Step 3 – ยืนยัน" width={375} height={570}>
+          <A3 />
+        </DCArtboard>
+        <DCArtboard id="a4" label="A4 · Admin – สรุป Man-day" width={375} height={490}>
+          <A4 />
+        </DCArtboard>
+      </DCSection>
+
+      <DCSection id="optB" title="Option B · Single-Page Form"
+        subtitle="ฟอร์มหน้าเดียว + สถิติ real-time ด้านบน + ตาราง admin">
+        <DCArtboard id="b1" label="B1 · ฟอร์มกรอกข้อมูล (Mobile)" width={390} height={880}>
+          <B1 />
+        </DCArtboard>
+        <DCArtboard id="b2" label="B2 · Admin — ตารางรายงาน" width={700} height={460}>
+          <B2 />
+        </DCArtboard>
+      </DCSection>
+
+      <DCSection id="optC" title="Option C · Kiosk / Tablet"
+        subtitle="หน้าจอสัมผัสขนาดใหญ่ที่ป้อมยาม — พิมพ์ใบผ่านประตูได้ทันที">
+        <DCArtboard id="c1" label="C1 · Kiosk – ลงทะเบียน" width={720} height={760}>
+          <C1 />
+        </DCArtboard>
+        <DCArtboard id="c2" label="C2 · Kiosk – Gate Pass สำเร็จ" width={720} height={460}>
+          <C2 />
+        </DCArtboard>
+        <DCArtboard id="c3" label="C3 · Admin – Dashboard" width={900} height={520}>
+          <C3 />
+        </DCArtboard>
+      </DCSection>
+    </DesignCanvas>
+  );
+}
+
+const root = ReactDOM.createRoot(document.getElementById('root'));
+root.render(<App />);
+</script>
+</body>
+</html>

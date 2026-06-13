@@ -1,0 +1,51 @@
+services:
+
+  # ── Next.js application ──────────────────────────────────────────────────────
+  app:
+    build: .
+    container_name: gatepass-app
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: "file:/app/data/gatepass.db"
+      JWT_SECRET: "${JWT_SECRET}"
+      NODE_ENV: production
+    volumes:
+      # Persist SQLite database file to host disk
+      - db-data:/app/data
+    # Not exposed to host directly — Caddy proxies to it
+    expose:
+      - "3000"
+    networks:
+      - internal
+
+  # ── Caddy reverse proxy + auto-HTTPS ────────────────────────────────────────
+  proxy:
+    image: caddy:2-alpine
+    container_name: gatepass-proxy
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data        # stores TLS certificates (persisted)
+      - caddy-config:/config
+    networks:
+      - internal
+    depends_on:
+      - app
+
+networks:
+  internal:
+    driver: bridge
+
+volumes:
+  db-data:
+    # Maps to ./data/ on host — back this up
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ./data
+  caddy-data:
+  caddy-config:

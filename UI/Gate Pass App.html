@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0" />
+  <title>SYS Gate Pass</title>
+  <link href="https://fonts.googleapis.com/css2?family=Prompt:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <!-- SheetJS for Excel export -->
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <!-- React + Babel -->
+  <script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+  <!-- Components — load in dependency order -->
+  <script type="text/babel" src="gp-atoms.jsx"></script>
+  <script type="text/babel" src="gp-auth.jsx"></script>
+  <script type="text/babel" src="gp-form.jsx"></script>
+  <script type="text/babel" src="gp-admin.jsx"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { height: 100%; }
+    body {
+      font-family: 'Prompt', 'Noto Sans Thai', sans-serif;
+      background: #0a1628;
+      min-height: 100vh;
+      -webkit-font-smoothing: antialiased;
+    }
+    input, select, button, textarea { font-family: inherit; }
+    /* Scrollbar */
+    ::-webkit-scrollbar { width: 5px; height: 5px; }
+    ::-webkit-scrollbar-track { background: #f0f4f8; }
+    ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
+    /* Centered shell on desktop */
+    #shell {
+      max-width: 520px;
+      margin: 0 auto;
+      min-height: 100vh;
+      background: #f0f4f8;
+      position: relative;
+    }
+    @media (min-width: 560px) {
+      #shell { box-shadow: 0 0 0 1px rgba(255,255,255,0.08), 0 32px 64px rgba(0,0,0,0.4); }
+    }
+    /* Admin gets wider shell */
+    #shell.wide { max-width: 880px; }
+    /* Smooth page transitions */
+    .page-enter { animation: fadeSlide 0.2s ease forwards; }
+    @keyframes fadeSlide {
+      from { opacity: 0; transform: translateY(6px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+
+  <script type="text/babel">
+    const { useState, useEffect } = React;
+
+    function App() {
+      const [user, setUser] = useState(() => getSession());
+
+      // Seed demo data once on first load
+      useEffect(() => { seedData(); }, []);
+
+      // Restore last page width on reload
+      useEffect(() => {
+        const shell = document.getElementById('shell');
+        if (shell && user?.role === 'admin') shell.classList.add('wide');
+        else if (shell) shell.classList.remove('wide');
+      }, [user]);
+
+      const handleLogin = (u) => {
+        setSession(u);
+        setUser(u);
+        const shell = document.getElementById('shell');
+        if (shell) {
+          shell.classList.toggle('wide', u.role === 'admin');
+        }
+      };
+
+      const handleLogout = () => {
+        clearSession();
+        setUser(null);
+        const shell = document.getElementById('shell');
+        if (shell) shell.classList.remove('wide');
+      };
+
+      if (!user) {
+        return (
+          <div className="page-enter">
+            <LoginScreen onLogin={handleLogin} />
+          </div>
+        );
+      }
+
+      if (user.role === 'admin') {
+        return (
+          <div className="page-enter">
+            <AdminFlow user={user} onLogout={handleLogout} />
+          </div>
+        );
+      }
+
+      return (
+        <div className="page-enter">
+          <ContractorFlow user={user} onLogout={handleLogout} />
+        </div>
+      );
+    }
+
+    // Mount inside a centered shell div
+    const shell = document.createElement('div');
+    shell.id = 'shell';
+    document.body.appendChild(shell);
+    // Move #root inside shell
+    shell.appendChild(document.getElementById('root'));
+
+    ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+  </script>
+</body>
+</html>
