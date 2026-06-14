@@ -2,9 +2,6 @@
   "name": "factory-gate-pass-permit",
   "version": "0.1.0",
   "private": true,
-  "prisma": {
-    "seed": "tsx prisma/seed.ts"
-  },
   "scripts": {
     "dev": "next dev --port 3009",
     "build": "next build",
