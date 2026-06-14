@@ -46,6 +46,7 @@ export default function ContractorFlow({
 }) {
   const [step, setStep] = useState(0);
   const [company, setCompany] = useState(COMPANIES[0]);
+  const [customCompany, setCustomCompany] = useState('');
   const [job, setJob] = useState('');
   const [zone, setZone] = useState('');
   const [startDate, setStartDate] = useState('');
@@ -56,6 +57,7 @@ export default function ContractorFlow({
   const [done, setDone] = useState(false);
 
   const manDays = calcMD(startDate, endDate);
+  const effectiveCompany = company === 'อื่นๆ' ? customCompany.trim() : company;
 
   async function logout() {
     await fetch('/api/auth/logout', { method: 'POST' });
@@ -67,6 +69,10 @@ export default function ContractorFlow({
     if (step === 0) {
       if (!company || company === COMPANIES[0]) {
         setError('กรุณาเลือกบริษัท');
+        return;
+      }
+      if (company === 'อื่นๆ' && !customCompany.trim()) {
+        setError('กรุณาระบุชื่อบริษัท');
         return;
       }
       if (!startDate || !endDate) {
@@ -108,7 +114,7 @@ export default function ContractorFlow({
           workers.map((w) => ({
             name: w.name.trim(),
             idCard: w.idCard,
-            company,
+            company: effectiveCompany,
             job: job.trim(),
             zone: zone.trim(),
             startDate,
@@ -132,6 +138,7 @@ export default function ContractorFlow({
   function reset() {
     setStep(0);
     setCompany(COMPANIES[0]);
+    setCustomCompany('');
     setJob('');
     setZone('');
     setStartDate('');
@@ -169,6 +176,14 @@ export default function ContractorFlow({
                   ข้อมูลงาน
                 </h2>
                 <SelBox label="บริษัท" value={company} onChange={setCompany} options={COMPANIES} />
+                {company === 'อื่นๆ' && (
+                  <InpBox
+                    label="ชื่อบริษัท"
+                    value={customCompany}
+                    onChange={setCustomCompany}
+                    placeholder="กรุณาระบุชื่อบริษัท"
+                  />
+                )}
                 <InpBox
                   label="ตำแหน่งงาน"
                   value={job}
@@ -279,7 +294,7 @@ export default function ContractorFlow({
                   }}
                 >
                   <div>
-                    <strong>บริษัท:</strong> {company}
+                    <strong>บริษัท:</strong> {effectiveCompany}
                   </div>
                   {job && (
                     <div>

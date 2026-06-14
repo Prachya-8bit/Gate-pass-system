@@ -26,6 +26,7 @@ export const COMPANIES = [
   'Innomatic',
   'MATFORCON',
   'P-WINNER',
+  'อื่นๆ',
 ];
 
 // Man-day count, inclusive of both endpoints (YYYY-MM-DD strings)
