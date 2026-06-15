@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getSession } from '@/lib/auth';
+import { getSession, type Role } from '@/lib/auth';
 
 export async function middleware(request: NextRequest) {
   const session = await getSession(request);
@@ -10,12 +10,18 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(loginUrl);
   }
 
-  const requiredRole = pathname.startsWith('/admin') ? 'admin' : 'contractor';
-  if (session.role !== requiredRole) {
-    return new NextResponse('ไม่มีสิทธิ์เข้าถึงหน้านี้ (403 Forbidden)', {
-      status: 403,
-      headers: { 'Content-Type': 'text/plain; charset=utf-8' },
-    });
+  // Explicit role requirement per path prefix
+  const requiredRole: Role | null = pathname.startsWith('/admin')
+    ? 'admin'
+    : pathname.startsWith('/contractor')
+      ? 'contractor'
+      : null;
+
+  if (!requiredRole || session.role !== requiredRole) {
+    return NextResponse.json(
+      { error: 'ไม่มีสิทธิ์เข้าถึงหน้านี้' },
+      { status: 403 },
+    );
   }
 
   return NextResponse.next();
