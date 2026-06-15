@@ -1,0 +1,25 @@
+# Local development database only — NOT used in production (Vercel uses Neon).
+# Start:  docker compose -f docker-compose.dev.yml up -d
+# Stop:   docker compose -f docker-compose.dev.yml down
+# Wipe:   docker compose -f docker-compose.dev.yml down -v
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: gatepass-db-dev
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: gatepass
+      POSTGRES_PASSWORD: gatepass
+      POSTGRES_DB: gatepass
+    ports:
+      - "5432:5432"
+    volumes:
+      - gatepass-db-dev:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U gatepass -d gatepass"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  gatepass-db-dev:
