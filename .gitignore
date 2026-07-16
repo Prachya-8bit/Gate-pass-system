@@ -43,6 +43,12 @@ prisma/*.db
 prisma/*.db-shm
 prisma/*.db-wal
 
+# epro automation — local-only state, secrets, and debug artifacts
+automation/node_modules/
+automation/state/
+automation/screenshots/
+automation/pages/
+
 # vercel
 .vercel
 

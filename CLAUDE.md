@@ -29,7 +29,7 @@ Key prototype files:
 |-------|--------|
 | Framework | Next.js 14+ (App Router) |
 | Language | TypeScript |
-| Database | SQLite via Prisma |
+| Database | PostgreSQL (Neon) via Prisma — dev ใช้ Neon branch "dev", prod ใช้ branch หลัก |
 | Auth | Custom: bcrypt password hash + HTTP-only JWT cookie |
 | Styling | Inline styles (migrated from prototype — do not convert to Tailwind) |
 | Export | `xlsx` npm package (client-side) |
@@ -117,9 +117,9 @@ Shell widths: contractor = `max-width: 520px`, admin = `max-width: 880px`.
 ## Commands
 
 ```bash
-# First-time setup
+# First-time setup — สร้าง .env.local ก่อน (ดู .env.local.example) ชี้ DATABASE_URL ไป Neon branch "dev"
 npm install
-npx prisma migrate dev --name init
+npx prisma migrate deploy
 npx prisma db seed
 
 # Dev
@@ -136,39 +136,22 @@ npx tsc --noEmit
 
 ## Seed data
 
-Default admin: credential `admin`, password `admin123` (bcrypt hashed in seed).
-Seven demo contractor records matching the prototype's `seedData()` function in `gp-atoms.jsx`.
+Default admin only: credential `admin`, password from `SEED_ADMIN_PASSWORD` env var (falls back to `admin123` for local dev — production must set it).
+Demo records were removed (2026-07-15) — records now come from real form submissions, and contractor accounts are created by the admin via the dashboard.
 
 ---
 
 ## Production deployment
 
-**Stack:** Docker (Linux containers on Windows Server) + Caddy reverse proxy + Let's Encrypt HTTPS
+**Stack:** Vercel (auto-deploy จาก GitHub `main`) + Neon PostgreSQL
 
-Key files:
-- `Dockerfile` — multi-stage Next.js build (node:20-alpine)
-- `docker-compose.yml` — `app` (Next.js) + `proxy` (Caddy) + `db-data` volume
-- `Caddyfile` — set `your-domain.com` before first deploy; Caddy auto-fetches TLS cert
-- `.env.production.example` — copy to `.env.production`, fill `JWT_SECRET` and `DATABASE_URL`
-- `deploy.ps1` — run on Windows Server to pull, build, migrate, and restart
+- Repo: `github.com/Prachya-8bit/Gate-pass-system` — push `main` = deploy
+- `vercel.json` — buildCommand รัน `prisma generate && prisma migrate deploy && next build` (migration ถูก apply อัตโนมัติทุก deploy)
+- Environment variables ตั้งใน Vercel dashboard (เช็คลิสต์อยู่ใน `.env.production.example`): `DATABASE_URL` (Neon **pooled** connection), `JWT_SECRET`, `INTEGRATION_API_KEY`
+- Seed admin ครั้งแรก: รันจากเครื่อง dev — `DATABASE_URL=<Neon direct> SEED_ADMIN_PASSWORD=<รหัสจริง> npx prisma db seed`
+- Neon มี 2 branches: หลัก (production) + `dev` (เครื่องพัฒนาใช้ผ่าน `.env.local`)
 
-**Deploy flow:**
-```powershell
-# First time
-cp .env.production.example .env.production   # edit JWT_SECRET
-mkdir data                                    # SQLite volume bind mount
-.\deploy.ps1
-
-# Subsequent deploys
-.\deploy.ps1
-```
-
-**Pre-launch checklist:**
-1. Replace `your-domain.com` in `Caddyfile` with real domain
-2. Point domain A record → server's public IP
-3. Open TCP 80 + 443 in Windows Defender Firewall and any upstream firewall
-4. Generate a 64-char `JWT_SECRET` (`node -e "console.log(require('crypto').randomBytes(64).toString('hex'))"`)
-5. Back up `./data/gatepass.db` on a schedule (e.g. Windows Task Scheduler → robocopy)
+**Legacy:** `Dockerfile`, `docker-compose.yml`, `Caddyfile`, `deploy.ps1` เป็นของแผน self-host เดิม (Docker + SQLite) — ใช้ไม่ได้แล้วหลัง schema เปลี่ยนเป็น PostgreSQL; เก็บไว้อ้างอิงเท่านั้น
 
 ---
 
