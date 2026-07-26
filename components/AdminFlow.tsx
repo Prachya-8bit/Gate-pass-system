@@ -394,7 +394,7 @@ export default function AdminFlow({
                     setCompanyFilter(v);
                     if (v !== 'อื่นๆ') setCustomCompany('');
                   }}
-                  options={['ทั้งหมด', ...COMPANIES.slice(1), 'อื่นๆ']}
+                  options={['ทั้งหมด', ...COMPANIES.slice(1)]}
                 />
               </div>
               {companyFilter === 'อื่นๆ' && (

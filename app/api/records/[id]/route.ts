@@ -41,14 +41,15 @@ export async function PATCH(
 
   const { id } = await params;
 
-  let body: { action?: string };
+  // No body at all is the legacy accident-toggle call — keep it working.
+  let body: { action?: string } = {};
   try {
-    body = await request.json();
+    body = (await request.json()) ?? {};
   } catch {
-    return NextResponse.json({ error: 'ข้อมูลไม่ถูกต้อง' }, { status: 400 });
+    body = {};
   }
 
-  if (!body.action) {
+  if (!body.action || body.action === 'toggleAccident') {
     const record = await prisma.record.findUnique({ where: { id } });
     if (!record) {
       return NextResponse.json({ error: 'ไม่พบรายการที่ระบุ' }, { status: 404 });
