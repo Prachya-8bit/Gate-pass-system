@@ -4,6 +4,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import * as XLSX from 'xlsx';
 import { gDS, COMPANIES } from '@/lib/constants';
 import { Btn, GCard, Badge, InpBox, SelBox, TopBar } from '@/components/atoms';
+import { SYNC_LABELS } from '@/lib/sync';
 
 interface RecordRow {
   id: string;
@@ -19,6 +20,12 @@ interface RecordRow {
   createdAt: string;
   createdBy: string;
   author?: { credential: string };
+  syncStatus: string;
+  syncAttempt: number;
+  lastSyncError: string | null;
+  syncedAt: string | null;
+  confirmedAt: string | null;
+  confirmedBy: string | null;
 }
 
 const thStyle: React.CSSProperties = {
@@ -37,6 +44,11 @@ const tdStyle: React.CSSProperties = {
   padding: '10px 10px',
   borderBottom: `1px solid ${gDS.border}`,
   whiteSpace: 'nowrap',
+};
+
+const smallBtnStyle: React.CSSProperties = {
+  padding: '4px 10px',
+  fontSize: 12,
 };
 
 function KpiCard({
@@ -72,6 +84,7 @@ export default function AdminFlow({
   const [newRole, setNewRole] = useState('contractor');
   const [userMsg, setUserMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [creating, setCreating] = useState(false);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
 
   async function load() {
     setLoading(true);
@@ -100,6 +113,35 @@ export default function AdminFlow({
     }
   }
 
+  async function action(id: string, actionName: string) {
+    const res = await fetch(`/api/records/${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: actionName }),
+    });
+    if (res.ok) {
+      load();
+    } else {
+      const data = await res.json();
+      alert(data.error || 'เกิดข้อผิดพลาด');
+    }
+  }
+
+  async function bulkConfirm() {
+    const res = await fetch('/api/records/confirm', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ids: Array.from(selected) }),
+    });
+    if (res.ok) {
+      setSelected(new Set());
+      load();
+    } else {
+      const data = await res.json();
+      alert(data.error || 'เกิดข้อผิดพลาด');
+    }
+  }
+
   const filtered = useMemo(() => {
     if (companyFilter === 'ทั้งหมด') return records;
     if (companyFilter === 'อื่นๆ') {
@@ -110,9 +152,34 @@ export default function AdminFlow({
     return records.filter((r) => r.company === companyFilter);
   }, [records, companyFilter, customCompany]);
 
-  const totalManDays = filtered.reduce((s, r) => s + r.manDays, 0);
-  const uniqueCompanies = new Set(filtered.map((r) => r.company)).size;
-  const accidents = filtered.filter((r) => r.accident).length;
+  const pendingCount = filtered.filter((r) => r.syncStatus === 'PENDING').length;
+  const syncingCount = filtered.filter((r) => r.syncStatus === 'SYNCING').length;
+  const syncedCount = filtered.filter((r) => r.syncStatus === 'SYNCED').length;
+  const needsReviewCount = filtered.filter((r) => r.syncStatus === 'NEEDS_REVIEW').length;
+  const failedCount = filtered.filter((r) => r.syncStatus === 'FAILED').length;
+  const permanentFailedCount = filtered.filter(
+    (r) => r.syncStatus === 'FAILED' && r.syncAttempt >= 3,
+  ).length;
+  const problemCount = needsReviewCount + failedCount;
+
+  const pendingIds = useMemo(
+    () => filtered.filter((r) => r.syncStatus === 'PENDING').map((r) => r.id),
+    [filtered],
+  );
+  const allPendingSelected = pendingIds.length > 0 && pendingIds.every((id) => selected.has(id));
+
+  function toggleSelectAll() {
+    setSelected(allPendingSelected ? new Set() : new Set(pendingIds));
+  }
+
+  function toggleSelectOne(id: string) {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
 
   const byCompany = useMemo(() => {
     const map = new Map<string, { count: number; manDays: number }>();
@@ -137,6 +204,8 @@ export default function AdminFlow({
       'แรงงาน (วัน)': r.manDays,
       อุบัติเหตุ: r.accident ? 'มี' : 'ไม่มี',
       วันที่บันทึก: r.createdAt,
+      'สถานะ EPRO': SYNC_LABELS[r.syncStatus] || r.syncStatus,
+      'วันที่ส่ง EPRO': r.syncedAt ? r.syncedAt.slice(0, 10) : '-',
     }));
     const ws = XLSX.utils.json_to_sheet(rows);
     const wb = XLSX.utils.book_new();
@@ -178,6 +247,69 @@ export default function AdminFlow({
     }
   }
 
+  function renderSyncCell(r: RecordRow) {
+    switch (r.syncStatus) {
+      case 'PENDING':
+        return (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <Badge color="gray">{SYNC_LABELS.PENDING}</Badge>
+            <Btn variant="accent" style={smallBtnStyle} onClick={() => action(r.id, 'confirm')}>
+              ยืนยัน
+            </Btn>
+          </div>
+        );
+      case 'CONFIRMED':
+        return (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <Badge color="amber">{SYNC_LABELS.CONFIRMED}</Badge>
+            <Btn variant="secondary" style={smallBtnStyle} onClick={() => action(r.id, 'unconfirm')}>
+              ยกเลิก
+            </Btn>
+          </div>
+        );
+      case 'SYNCING':
+        return <Badge color="blue">{SYNC_LABELS.SYNCING}</Badge>;
+      case 'SYNCED':
+        return (
+          <span title={r.syncedAt ? r.syncedAt.slice(0, 10) : undefined}>
+            <Badge color="green">{SYNC_LABELS.SYNCED}</Badge>
+          </span>
+        );
+      case 'FAILED':
+        return (
+          <div
+            style={{ display: 'flex', alignItems: 'center', gap: 6 }}
+            title={r.lastSyncError || undefined}
+          >
+            <Badge color="red">{SYNC_LABELS.FAILED}</Badge>
+            <Btn variant="danger" style={smallBtnStyle} onClick={() => action(r.id, 'retry')}>
+              ลองใหม่
+            </Btn>
+          </div>
+        );
+      case 'NEEDS_REVIEW':
+        return (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+            <Badge color="red">{SYNC_LABELS.NEEDS_REVIEW}</Badge>
+            <Btn variant="ok" style={smallBtnStyle} onClick={() => action(r.id, 'resolveSynced')}>
+              ส่งแล้ว
+            </Btn>
+            <Btn
+              variant="secondary"
+              style={smallBtnStyle}
+              onClick={() => action(r.id, 'resolveNotSynced')}
+            >
+              ยังไม่ส่ง
+            </Btn>
+          </div>
+        );
+      case 'CANCELLED':
+        return <Badge color="gray">{SYNC_LABELS.CANCELLED}</Badge>;
+      default:
+        return <Badge color="gray">{r.syncStatus}</Badge>;
+    }
+  }
+
   return (
     <div style={{ minHeight: '100vh', background: gDS.bg, fontFamily: gDS.font }}>
       <TopBar credential={credential} role={role} onLogout={logout} />
@@ -200,9 +332,10 @@ export default function AdminFlow({
 
         <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 16 }}>
           <KpiCard label="จำนวนรายการทั้งหมด" value={filtered.length} color={gDS.primary} />
-          <KpiCard label="จำนวนแรงงานทั้งหมด" value={totalManDays} color={gDS.accent} />
-          <KpiCard label="บริษัททั้งหมด" value={uniqueCompanies} color="#1d4ed8" />
-          <KpiCard label="อุบัติเหตุ" value={accidents} color={gDS.err} />
+          <KpiCard label="รอยืนยัน" value={pendingCount} color="#64748b" />
+          <KpiCard label="กำลังส่ง" value={syncingCount} color="#2563eb" />
+          <KpiCard label="ส่งแล้ว" value={syncedCount} color={gDS.ok} />
+          <KpiCard label="มีปัญหา" value={problemCount} color={gDS.err} />
         </div>
 
         <GCard style={{ marginBottom: 16 }}>
@@ -276,10 +409,48 @@ export default function AdminFlow({
               )}
             </div>
           </div>
+
+          {(needsReviewCount > 0 || permanentFailedCount > 0) && (
+            <div
+              style={{
+                background: gDS.errBg,
+                color: gDS.err,
+                padding: '12px 16px',
+                borderRadius: gDS.r.m,
+                marginBottom: 12,
+                fontSize: 14,
+                fontWeight: 600,
+                display: 'flex',
+                alignItems: 'center',
+                gap: 8,
+                flexWrap: 'wrap',
+              }}
+            >
+              ⚠️ มีรายการที่ต้องดำเนินการ:{' '}
+              {needsReviewCount > 0 && `${needsReviewCount} รายการรอตรวจสอบ`}
+              {needsReviewCount > 0 && permanentFailedCount > 0 && ' | '}
+              {permanentFailedCount > 0 && `${permanentFailedCount} รายการส่งไม่สำเร็จ`}
+            </div>
+          )}
+
+          {selected.size > 0 && (
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 8 }}>
+              <span style={{ fontSize: 13, color: gDS.muted }}>เลือก {selected.size} รายการ</span>
+              <Btn variant="accent" onClick={bulkConfirm}>
+                ยืนยันที่เลือก ({selected.size})
+              </Btn>
+            </div>
+          )}
+
           <div style={{ overflowX: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
               <thead>
                 <tr>
+                  <th style={thStyle}>
+                    <input type="checkbox" checked={allPendingSelected} onChange={toggleSelectAll} />
+                  </th>
+                  <th style={thStyle}>สถานะ EPRO</th>
+                  <th style={thStyle}>วันที่ส่ง EPRO</th>
                   <th style={thStyle}>ชื่อ</th>
                   <th style={thStyle}>เลขบัตร</th>
                   <th style={thStyle}>บริษัท</th>
@@ -295,20 +466,31 @@ export default function AdminFlow({
               <tbody>
                 {loading && (
                   <tr>
-                    <td style={{ ...tdStyle, color: gDS.muted }} colSpan={10}>
+                    <td style={{ ...tdStyle, color: gDS.muted }} colSpan={13}>
                       กำลังโหลดข้อมูล...
                     </td>
                   </tr>
                 )}
                 {!loading && filtered.length === 0 && (
                   <tr>
-                    <td style={{ ...tdStyle, color: gDS.muted }} colSpan={10}>
+                    <td style={{ ...tdStyle, color: gDS.muted }} colSpan={13}>
                       ไม่มีข้อมูล
                     </td>
                   </tr>
                 )}
                 {filtered.map((r) => (
                   <tr key={r.id}>
+                    <td style={tdStyle}>
+                      {r.syncStatus === 'PENDING' && (
+                        <input
+                          type="checkbox"
+                          checked={selected.has(r.id)}
+                          onChange={() => toggleSelectOne(r.id)}
+                        />
+                      )}
+                    </td>
+                    <td style={tdStyle}>{renderSyncCell(r)}</td>
+                    <td style={tdStyle}>{r.syncedAt ? r.syncedAt.slice(0, 10) : '-'}</td>
                     <td style={tdStyle}>{r.name}</td>
                     <td style={tdStyle}>{r.idCard}</td>
                     <td style={tdStyle}>{r.company}</td>

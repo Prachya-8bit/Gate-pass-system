@@ -59,6 +59,8 @@ lib/
   db.ts                      → Prisma client singleton
   auth.ts                    → getSession(), signToken(), verifyToken()
   constants.ts               → COMPANIES list, calcMD()
+  lib/sync.ts                 → groupKey, SYNC_LABELS, logTransition, constants
+  lib/integration-auth.ts     → requireApiKey() for server-to-server endpoints
 prisma/
   schema.prisma
   seed.ts                    → 7 demo records + default admin user
@@ -74,6 +76,10 @@ See `prisma/schema.prisma`. Two models:
 **User** — `id`, `credential` (phone or email, unique), `password` (bcrypt), `role` (contractor | admin), `createdAt`
 
 **Record** — `id`, `name`, `idCard`, `company`, `job?`, `zone?`, `startDate`, `endDate`, `manDays`, `accident` (bool, default false), `createdAt`, `createdBy` (→ User.id)
+
+- **SyncStatus enum + SyncLog model** — state machine for EPRO sync (see `docs/sync-state-machine.md`)
+- **Business logic moved to backend:** `groupKey()` (record grouping) is in `lib/sync.ts` — RPA no longer groups records
+- **API pattern:** claim/report with compare-and-set to prevent duplicate submissions. `lib/integration-auth.ts` provides shared API key auth
 
 ---
 
