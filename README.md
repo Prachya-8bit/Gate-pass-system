@@ -22,7 +22,7 @@ npm install
 cp .env.local.example .env.local      # then edit JWT_SECRET
 npx prisma migrate dev --name init     # create the SQLite schema
 npx prisma db seed                     # load demo admin + sample records
-npm run dev                            # http://localhost:3009
+npm run dev                            # http://localhost:4009
 ```
 
 Default admin login — credential `admin`, password `admin123`.
@@ -34,9 +34,9 @@ Default admin login — credential `admin`, password `admin123`.
 ## Scripts
 
 ```bash
-npm run dev      # dev server on port 3009
+npm run dev      # dev server on port 4009
 npm run build    # production build
-npm run start    # serve the production build on port 3009
+npm run start    # serve the production build on port 4009
 npm run lint     # eslint
 npx prisma studio    # browse the database
 npx tsc --noEmit     # type-check
