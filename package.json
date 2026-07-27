@@ -3,9 +3,9 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev --port 3009",
+    "dev": "next dev --port 4009",
     "build": "next build",
-    "start": "next start --port 3009",
+    "start": "next start --port 4009",
     "lint": "eslint",
     "postinstall": "prisma generate"
   },
