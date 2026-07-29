@@ -56,3 +56,4 @@ automation/logs/
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+.env*

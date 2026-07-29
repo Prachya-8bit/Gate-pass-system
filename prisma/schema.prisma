@@ -10,6 +10,16 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+enum SyncStatus {
+  PENDING
+  CONFIRMED
+  SYNCING
+  SYNCED
+  FAILED
+  NEEDS_REVIEW
+  CANCELLED
+}
+
 model User {
   id          String   @id @default(cuid())
   credential  String   @unique  // phone number or email
@@ -35,5 +45,33 @@ model Record {
   createdAt String           // ISO date string YYYY-MM-DD (submission date)
   createdBy String           // User.id of submitting contractor
 
+  syncStatus    SyncStatus @default(PENDING)
+  syncAttempt   Int        @default(0)
+  lastSyncError String?
+  lastSyncAt    DateTime?
+  syncedAt      DateTime?
+  claimedAt     DateTime?
+  claimedBy     String?
+  batchKey      String?
+  confirmedAt   DateTime?
+  confirmedBy   String?
+  updatedAt     DateTime   @default(now()) @updatedAt
+
+  @@index([syncStatus])
+
   author User @relation(fields: [createdBy], references: [id])
+}
+
+model SyncLog {
+  id         String   @id @default(cuid())
+  recordId   String
+  fromStatus String?
+  toStatus   String
+  actor      String
+  machine    String?
+  error      String?
+  createdAt  DateTime @default(now())
+
+  @@index([recordId, createdAt])
+  @@index([createdAt])
 }
