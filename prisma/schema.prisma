@@ -11,11 +11,12 @@ datasource db {
 }
 
 model User {
-  id         String   @id @default(cuid())
-  credential String   @unique  // phone number or email
-  password   String            // bcrypt hash — never store plaintext
-  role       String   @default("contractor")  // "contractor" | "admin"
-  createdAt  DateTime @default(now())
+  id          String   @id @default(cuid())
+  credential  String   @unique  // phone number or email
+  password    String            // bcrypt hash — never store plaintext
+  role        String   @default("contractor")  // "contractor" | "admin"
+  contactName String?           // ชื่อผู้ใช้งานจริง เพื่อให้ admin รู้ว่าบัญชีนี้ของใคร
+  createdAt   DateTime @default(now())
 
   records Record[]
 }

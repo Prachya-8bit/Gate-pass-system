@@ -3,6 +3,26 @@ import bcrypt from 'bcryptjs';
 import { prisma } from '@/lib/db';
 import { getSession } from '@/lib/auth';
 
+export async function GET(request: NextRequest) {
+  const session = await getSession(request);
+  if (!session || session.role !== 'admin') {
+    return NextResponse.json({ error: 'ไม่มีสิทธิ์เข้าถึง' }, { status: 403 });
+  }
+
+  const users = await prisma.user.findMany({
+    select: {
+      id: true,
+      credential: true,
+      contactName: true,
+      role: true,
+      createdAt: true,
+    },
+    orderBy: { createdAt: 'desc' },
+  });
+
+  return NextResponse.json(users);
+}
+
 export async function POST(request: NextRequest) {
   const session = await getSession(request);
   if (!session || session.role !== 'admin') {

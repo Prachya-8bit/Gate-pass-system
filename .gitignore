@@ -48,6 +48,7 @@ automation/node_modules/
 automation/state/
 automation/screenshots/
 automation/pages/
+automation/logs/
 
 # vercel
 .vercel

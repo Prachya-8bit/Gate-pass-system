@@ -21,6 +21,14 @@ interface RecordRow {
   author?: { credential: string };
 }
 
+interface UserRow {
+  id: string;
+  credential: string;
+  contactName: string | null;
+  role: string;
+  createdAt: string;
+}
+
 const thStyle: React.CSSProperties = {
   textAlign: 'left',
   fontSize: 12,
@@ -73,6 +81,20 @@ export default function AdminFlow({
   const [userMsg, setUserMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [creating, setCreating] = useState(false);
 
+  const [users, setUsers] = useState<UserRow[]>([]);
+  const [usersLoading, setUsersLoading] = useState(true);
+  const [editingNameId, setEditingNameId] = useState<string | null>(null);
+  const [editingNameValue, setEditingNameValue] = useState('');
+  const [savingName, setSavingName] = useState(false);
+
+  const [resetModalUser, setResetModalUser] = useState<UserRow | null>(null);
+  const [resetPw1, setResetPw1] = useState('');
+  const [resetPw2, setResetPw2] = useState('');
+  const [resetError, setResetError] = useState<string | null>(null);
+  const [resetResult, setResetResult] = useState<string | null>(null);
+  const [resetSubmitting, setResetSubmitting] = useState(false);
+  const [copied, setCopied] = useState(false);
+
   async function load() {
     setLoading(true);
     try {
@@ -83,9 +105,108 @@ export default function AdminFlow({
     }
   }
 
+  async function loadUsers() {
+    setUsersLoading(true);
+    try {
+      const res = await fetch('/api/users');
+      if (res.ok) setUsers(await res.json());
+    } finally {
+      setUsersLoading(false);
+    }
+  }
+
   useEffect(() => {
     load();
+    loadUsers();
   }, []);
+
+  function startEditName(u: UserRow) {
+    setEditingNameId(u.id);
+    setEditingNameValue(u.contactName || '');
+  }
+
+  function cancelEditName() {
+    setEditingNameId(null);
+    setEditingNameValue('');
+  }
+
+  async function saveName(id: string) {
+    setSavingName(true);
+    try {
+      const res = await fetch(`/api/users/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ contactName: editingNameValue.trim() }),
+      });
+      if (res.ok) {
+        const updated: UserRow = await res.json();
+        setUsers((us) => us.map((u) => (u.id === id ? updated : u)));
+        setEditingNameId(null);
+        setEditingNameValue('');
+      }
+    } finally {
+      setSavingName(false);
+    }
+  }
+
+  function openResetModal(u: UserRow) {
+    setResetModalUser(u);
+    setResetPw1('');
+    setResetPw2('');
+    setResetError(null);
+    setResetResult(null);
+    setCopied(false);
+  }
+
+  function closeResetModal() {
+    setResetModalUser(null);
+    setResetPw1('');
+    setResetPw2('');
+    setResetError(null);
+    setResetResult(null);
+    setCopied(false);
+  }
+
+  async function submitReset() {
+    setResetError(null);
+    if (resetPw1.length < 8) {
+      setResetError('รหัสผ่านต้องมีอย่างน้อย 8 ตัวอักษร');
+      return;
+    }
+    if (resetPw1 !== resetPw2) {
+      setResetError('รหัสผ่านทั้งสองช่องไม่ตรงกัน');
+      return;
+    }
+    if (!resetModalUser) return;
+    setResetSubmitting(true);
+    try {
+      const res = await fetch(`/api/users/${resetModalUser.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password: resetPw1 }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setResetError(data.error || 'รีเซ็ตรหัสผ่านไม่สำเร็จ');
+      } else {
+        setResetResult(resetPw1);
+      }
+    } catch {
+      setResetError('เกิดข้อผิดพลาด กรุณาลองใหม่อีกครั้ง');
+    } finally {
+      setResetSubmitting(false);
+    }
+  }
+
+  async function copyResetResult() {
+    if (!resetResult) return;
+    try {
+      await navigator.clipboard.writeText(resetResult);
+      setCopied(true);
+    } catch {
+      setCopied(false);
+    }
+  }
 
   async function logout() {
     await fetch('/api/auth/logout', { method: 'POST' });
@@ -343,6 +464,109 @@ export default function AdminFlow({
 
         <GCard>
           <h3 style={{ margin: '0 0 12px', fontSize: 16, color: gDS.text }}>
+            จัดการบัญชีผู้ใช้
+          </h3>
+
+          <div style={{ overflowX: 'auto', marginBottom: 24 }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+              <thead>
+                <tr>
+                  <th style={thStyle}>ชื่อผู้ใช้งาน</th>
+                  <th style={thStyle}>Username</th>
+                  <th style={thStyle}>บทบาท</th>
+                  <th style={thStyle}>วันที่สร้าง</th>
+                  <th style={thStyle}>จัดการ</th>
+                </tr>
+              </thead>
+              <tbody>
+                {usersLoading && (
+                  <tr>
+                    <td style={{ ...tdStyle, color: gDS.muted }} colSpan={5}>
+                      กำลังโหลดข้อมูล...
+                    </td>
+                  </tr>
+                )}
+                {!usersLoading && users.length === 0 && (
+                  <tr>
+                    <td style={{ ...tdStyle, color: gDS.muted }} colSpan={5}>
+                      ไม่มีข้อมูล
+                    </td>
+                  </tr>
+                )}
+                {users.map((u) => (
+                  <tr key={u.id}>
+                    <td style={tdStyle}>
+                      {editingNameId === u.id ? (
+                        <div style={{ display: 'flex', gap: 6, alignItems: 'center', minWidth: 220 }}>
+                          <div style={{ flex: 1 }}>
+                            <InpBox
+                              label=""
+                              value={editingNameValue}
+                              onChange={setEditingNameValue}
+                              placeholder="ชื่อผู้ใช้งานจริง"
+                            />
+                          </div>
+                          <Btn
+                            variant="ok"
+                            onClick={() => saveName(u.id)}
+                            disabled={savingName}
+                            style={{ padding: '6px 12px', fontSize: 13 }}
+                          >
+                            บันทึก
+                          </Btn>
+                          <Btn
+                            variant="ghost"
+                            onClick={cancelEditName}
+                            disabled={savingName}
+                            style={{ padding: '6px 12px', fontSize: 13 }}
+                          >
+                            ยกเลิก
+                          </Btn>
+                        </div>
+                      ) : u.contactName ? (
+                        u.contactName
+                      ) : (
+                        <button
+                          onClick={() => startEditName(u)}
+                          style={{
+                            background: 'transparent',
+                            border: 'none',
+                            padding: 0,
+                            color: gDS.accent,
+                            fontSize: 13,
+                            fontWeight: 600,
+                            cursor: 'pointer',
+                            fontFamily: gDS.font,
+                            textDecoration: 'underline',
+                          }}
+                        >
+                          + เพิ่มชื่อ
+                        </button>
+                      )}
+                    </td>
+                    <td style={tdStyle}>{u.credential}</td>
+                    <td style={tdStyle}>
+                      <Badge color={u.role === 'admin' ? 'amber' : 'blue'}>
+                        {u.role === 'admin' ? 'ผู้ดูแลระบบ' : 'ผู้รับเหมา'}
+                      </Badge>
+                    </td>
+                    <td style={tdStyle}>{u.createdAt.slice(0, 10)}</td>
+                    <td style={tdStyle}>
+                      <Btn
+                        variant="secondary"
+                        onClick={() => openResetModal(u)}
+                        style={{ padding: '6px 14px', fontSize: 13 }}
+                      >
+                        รีเซ็ตรหัส
+                      </Btn>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          <h3 style={{ margin: '0 0 12px', fontSize: 16, color: gDS.text }}>
             สร้างบัญชีผู้ใช้ใหม่
           </h3>
           <form onSubmit={createUser}>
@@ -393,6 +617,120 @@ export default function AdminFlow({
           </form>
         </GCard>
       </div>
+
+      {resetModalUser && (
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(10,22,40,0.55)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 200,
+            padding: 16,
+          }}
+        >
+          <GCard style={{ maxWidth: 420, width: '100%' }}>
+            <h3 style={{ margin: '0 0 4px', fontSize: 16, color: gDS.text }}>
+              รีเซ็ตรหัสผ่าน
+            </h3>
+            <div style={{ fontSize: 13, color: gDS.muted, marginBottom: 14 }}>
+              บัญชี: {resetModalUser.credential}
+            </div>
+
+            {resetResult ? (
+              <div>
+                <div
+                  style={{
+                    background: gDS.okBg,
+                    color: gDS.ok,
+                    fontSize: 13,
+                    padding: '10px 12px',
+                    borderRadius: gDS.r.s,
+                    marginBottom: 12,
+                  }}
+                >
+                  ตั้งรหัสผ่านใหม่สำเร็จ กรุณาแจ้งรหัสนี้ให้ผู้ใช้ทางโทรศัพท์ —
+                  เมื่อปิดหน้าต่างนี้แล้วจะไม่สามารถดูรหัสนี้ซ้ำได้อีก
+                </div>
+                <div
+                  style={{
+                    display: 'flex',
+                    gap: 8,
+                    alignItems: 'center',
+                    background: gDS.bg,
+                    border: `1px solid ${gDS.border}`,
+                    borderRadius: gDS.r.s,
+                    padding: '10px 12px',
+                    marginBottom: 14,
+                  }}
+                >
+                  <span
+                    style={{
+                      flex: 1,
+                      fontFamily: 'monospace',
+                      fontSize: 16,
+                      fontWeight: 700,
+                      color: gDS.text,
+                      wordBreak: 'break-all',
+                    }}
+                  >
+                    {resetResult}
+                  </span>
+                  <Btn
+                    variant="secondary"
+                    onClick={copyResetResult}
+                    style={{ padding: '6px 12px', fontSize: 13 }}
+                  >
+                    {copied ? 'คัดลอกแล้ว' : 'คัดลอก'}
+                  </Btn>
+                </div>
+                <Btn onClick={closeResetModal}>ปิดหน้าต่าง</Btn>
+              </div>
+            ) : (
+              <div>
+                <InpBox
+                  label="รหัสผ่านใหม่"
+                  value={resetPw1}
+                  onChange={setResetPw1}
+                  type="password"
+                  placeholder="อย่างน้อย 8 ตัวอักษร"
+                />
+                <InpBox
+                  label="ยืนยันรหัสผ่านใหม่อีกครั้ง"
+                  value={resetPw2}
+                  onChange={setResetPw2}
+                  type="password"
+                  placeholder="พิมพ์รหัสผ่านอีกครั้ง"
+                />
+                {resetError && (
+                  <div
+                    style={{
+                      background: gDS.errBg,
+                      color: gDS.err,
+                      fontSize: 13,
+                      padding: '10px 12px',
+                      borderRadius: gDS.r.s,
+                      marginBottom: 14,
+                    }}
+                  >
+                    {resetError}
+                  </div>
+                )}
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <Btn onClick={submitReset} disabled={resetSubmitting}>
+                    {resetSubmitting ? 'กำลังบันทึก...' : 'ยืนยันรีเซ็ตรหัส'}
+                  </Btn>
+                  <Btn variant="secondary" onClick={closeResetModal} disabled={resetSubmitting}>
+                    ยกเลิก
+                  </Btn>
+                </div>
+              </div>
+            )}
+          </GCard>
+        </div>
+      )}
     </div>
   );
 }
