@@ -1,7 +1,16 @@
 'use client';
 
 import React, { useState } from 'react';
-import { gDS, COMPANIES, calcMD } from '@/lib/constants';
+import {
+  gDS,
+  COMPANIES,
+  calcMD,
+  addDays,
+  spanDays,
+  MIN_SPAN_DAYS,
+  MAX_SPAN_DAYS,
+  MAX_WORKERS_PER_SUBMIT,
+} from '@/lib/constants';
 import {
   Btn,
   InpBox,
@@ -59,6 +68,19 @@ export default function ContractorFlow({
   const manDays = calcMD(startDate, endDate);
   const effectiveCompany = company === 'อื่นๆ' ? customCompany.trim() : company;
 
+  // วันสิ้นสุดเลือกได้เฉพาะ 1–7 วันหลังวันที่เริ่ม
+  const endMin = startDate ? addDays(startDate, MIN_SPAN_DAYS) : undefined;
+  const endMax = startDate ? addDays(startDate, MAX_SPAN_DAYS) : undefined;
+
+  function changeStartDate(v: string) {
+    setStartDate(v);
+    // วันสิ้นสุดเดิมหลุดช่วงที่อนุญาต — ล้างค่าให้เลือกใหม่
+    if (v && endDate) {
+      const span = spanDays(v, endDate);
+      if (span < MIN_SPAN_DAYS || span > MAX_SPAN_DAYS) setEndDate('');
+    }
+  }
+
   async function logout() {
     await fetch('/api/auth/logout', { method: 'POST' });
     window.location.href = '/login';
@@ -79,12 +101,21 @@ export default function ContractorFlow({
         setError('กรุณาระบุวันที่เริ่มและวันที่สิ้นสุด');
         return;
       }
-      if (new Date(endDate) < new Date(startDate)) {
-        setError('วันที่สิ้นสุดต้องไม่ก่อนวันที่เริ่ม');
+      const span = spanDays(startDate, endDate);
+      if (span < MIN_SPAN_DAYS) {
+        setError(`วันที่สิ้นสุดต้องอยู่หลังวันที่เริ่มอย่างน้อย ${MIN_SPAN_DAYS} วัน`);
+        return;
+      }
+      if (span > MAX_SPAN_DAYS) {
+        setError(`ช่วงวันที่ต้องไม่เกิน ${MAX_SPAN_DAYS} วันนับจากวันที่เริ่ม`);
         return;
       }
     }
     if (step === 1) {
+      if (workers.length > MAX_WORKERS_PER_SUBMIT) {
+        setError(`ลงทะเบียนได้สูงสุด ${MAX_WORKERS_PER_SUBMIT} คนต่อการส่ง 1 ครั้ง`);
+        return;
+      }
       for (const w of workers) {
         if (!w.name.trim()) {
           setError('กรุณากรอกชื่อ-นามสกุลให้ครบทุกคน');
@@ -135,6 +166,15 @@ export default function ContractorFlow({
     }
   }
 
+  // ลงทะเบียนชุดถัดไป — คงข้อมูลงานเดิม (บริษัท/ตำแหน่ง/โซน/วันที่) แต่ล้างรายชื่อแรงงาน
+  function nextBatch() {
+    setWorkers([{ name: '', idCard: '' }]);
+    setStep(1);
+    setError('');
+    setSubmitting(false);
+    setDone(false);
+  }
+
   function reset() {
     setStep(0);
     setCompany(COMPANIES[0]);
@@ -159,12 +199,23 @@ export default function ContractorFlow({
             <h2 style={{ margin: '0 0 6px', fontSize: 20, color: gDS.text }}>
               บันทึกข้อมูลสำเร็จ
             </h2>
-            <p style={{ color: gDS.muted, fontSize: 14, margin: '0 0 20px' }}>
+            <p style={{ color: gDS.muted, fontSize: 14, margin: '0 0 8px' }}>
               ลงทะเบียนแรงงาน {workers.length} คน เรียบร้อยแล้ว
             </p>
-            <Btn variant="accent" onClick={reset}>
-              ลงทะเบียนใหม่
-            </Btn>
+            <p style={{ color: gDS.muted, fontSize: 13, margin: '0 0 20px' }}>
+              ลงทะเบียนได้สูงสุด {MAX_WORKERS_PER_SUBMIT} คนต่อครั้ง — หากมีมากกว่านี้
+              ให้กด &ldquo;ลงทะเบียนชุดถัดไป&rdquo; ระบบจะคงข้อมูลงานเดิมไว้ให้
+            </p>
+            <div
+              style={{ display: 'flex', gap: 8, justifyContent: 'center', flexWrap: 'wrap' }}
+            >
+              <Btn variant="accent" onClick={nextBatch}>
+                ลงทะเบียนชุดถัดไป
+              </Btn>
+              <Btn variant="secondary" onClick={reset}>
+                ลงทะเบียนใหม่
+              </Btn>
+            </div>
           </GCard>
         ) : (
           <GCard>
@@ -198,12 +249,21 @@ export default function ContractorFlow({
                 />
                 <div style={{ display: 'flex', gap: 12 }}>
                   <div style={{ flex: 1 }}>
-                    <DatePick label="วันที่เริ่ม" value={startDate} onChange={setStartDate} />
+                    <DatePick label="วันที่เริ่ม" value={startDate} onChange={changeStartDate} />
                   </div>
                   <div style={{ flex: 1 }}>
-                    <DatePick label="วันที่สิ้นสุด" value={endDate} onChange={setEndDate} />
+                    <DatePick
+                      label="วันที่สิ้นสุด"
+                      value={endDate}
+                      onChange={setEndDate}
+                      min={endMin}
+                      max={endMax}
+                    />
                   </div>
                 </div>
+                <p style={{ margin: '-8px 0 14px', fontSize: 12, color: gDS.muted }}>
+                  วันที่สิ้นสุดต้องอยู่หลังวันที่เริ่ม {MIN_SPAN_DAYS}–{MAX_SPAN_DAYS} วัน
+                </p>
                 {manDays > 0 && (
                   <div style={{ marginBottom: 14 }}>
                     <Badge color="blue">จำนวนแรงงาน {manDays} วัน/คน</Badge>
@@ -215,7 +275,7 @@ export default function ContractorFlow({
             {step === 1 && (
               <div>
                 <h2 style={{ margin: '0 0 14px', fontSize: 18, color: gDS.text }}>
-                  รายชื่อแรงงาน ({workers.length} คน)
+                  รายชื่อแรงงาน ({workers.length}/{MAX_WORKERS_PER_SUBMIT} คน)
                 </h2>
                 {workers.map((w, i) => (
                   <div
@@ -270,10 +330,16 @@ export default function ContractorFlow({
                 <Btn
                   variant="secondary"
                   onClick={() => setWorkers([...workers, { name: '', idCard: '' }])}
+                  disabled={workers.length >= MAX_WORKERS_PER_SUBMIT}
                   style={{ width: '100%' }}
                 >
                   + เพิ่มแรงงาน
                 </Btn>
+                <p style={{ margin: '8px 0 0', fontSize: 12, color: gDS.muted, textAlign: 'center' }}>
+                  {workers.length >= MAX_WORKERS_PER_SUBMIT
+                    ? `ครบ ${MAX_WORKERS_PER_SUBMIT} คนแล้ว — ส่งชุดนี้ก่อน แล้วกด “ลงทะเบียนชุดถัดไป” เพื่อลงทะเบียนคนที่เหลือ`
+                    : `ลงทะเบียนได้สูงสุด ${MAX_WORKERS_PER_SUBMIT} คนต่อการส่ง 1 ครั้ง`}
+                </p>
               </div>
             )}
 

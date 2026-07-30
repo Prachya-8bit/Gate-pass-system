@@ -1,7 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
 import { getSession } from '@/lib/auth';
-import { calcMD, COMPANIES } from '@/lib/constants';
+import {
+  calcMD,
+  COMPANIES,
+  spanDays,
+  MIN_SPAN_DAYS,
+  MAX_SPAN_DAYS,
+  MAX_WORKERS_PER_SUBMIT,
+} from '@/lib/constants';
 
 export async function GET(request: NextRequest) {
   const session = await getSession(request);
@@ -45,6 +52,13 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'ต้องมีรายชื่อแรงงานอย่างน้อย 1 คน' }, { status: 400 });
   }
 
+  if (body.length > MAX_WORKERS_PER_SUBMIT) {
+    return NextResponse.json(
+      { error: `ลงทะเบียนได้สูงสุด ${MAX_WORKERS_PER_SUBMIT} คนต่อการส่ง 1 ครั้ง` },
+      { status: 400 },
+    );
+  }
+
   const dateRe = /^\d{4}-\d{2}-\d{2}$/;
   for (const r of body) {
     if (!r.name?.trim()) {
@@ -65,9 +79,16 @@ export async function POST(request: NextRequest) {
         { status: 400 },
       );
     }
-    if (new Date(r.endDate) < new Date(r.startDate)) {
+    const span = spanDays(r.startDate, r.endDate);
+    if (span < MIN_SPAN_DAYS) {
       return NextResponse.json(
-        { error: 'วันที่สิ้นสุดต้องไม่ก่อนวันที่เริ่ม' },
+        { error: `วันที่สิ้นสุดต้องอยู่หลังวันที่เริ่มอย่างน้อย ${MIN_SPAN_DAYS} วัน` },
+        { status: 400 },
+      );
+    }
+    if (span > MAX_SPAN_DAYS) {
+      return NextResponse.json(
+        { error: `ช่วงวันที่ต้องไม่เกิน ${MAX_SPAN_DAYS} วันนับจากวันที่เริ่ม` },
         { status: 400 },
       );
     }

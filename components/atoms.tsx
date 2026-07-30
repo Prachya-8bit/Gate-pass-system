@@ -209,10 +209,14 @@ export function DatePick({
   label,
   value,
   onChange,
+  min,
+  max,
 }: {
   label: string;
   value: string;
   onChange: (v: string) => void;
+  min?: string;
+  max?: string;
 }) {
   return (
     <div style={{ marginBottom: 14 }}>
@@ -221,6 +225,8 @@ export function DatePick({
         type="date"
         value={value}
         onChange={(e) => onChange(e.target.value)}
+        min={min}
+        max={max}
         style={fieldStyle()}
       />
     </div>

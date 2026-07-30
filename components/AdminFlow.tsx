@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import * as XLSX from 'xlsx';
 import { gDS, COMPANIES } from '@/lib/constants';
 import { Btn, GCard, Badge, InpBox, SelBox, TopBar } from '@/components/atoms';
@@ -52,6 +52,20 @@ const tdStyle: React.CSSProperties = {
   padding: '10px 10px',
   borderBottom: `1px solid ${gDS.border}`,
   whiteSpace: 'nowrap',
+};
+
+// ตารางรายการลงทะเบียน: แสดง 20 แถว ที่เหลือเลื่อนดูในการ์ด
+const RECORDS_VISIBLE_ROWS = 20;
+
+const stickyThStyle: React.CSSProperties = {
+  ...thStyle,
+  position: 'sticky',
+  top: 0,
+  background: '#fff',
+  zIndex: 1,
+  // border-collapse ทำให้เส้นขอบของ th ที่ sticky หายตอนเลื่อน — ใช้ inset shadow แทน
+  borderBottom: 'none',
+  boxShadow: `inset 0 -2px 0 ${gDS.border}`,
 };
 
 const smallBtnStyle: React.CSSProperties = {
@@ -272,6 +286,25 @@ export default function AdminFlow({
     }
     return records.filter((r) => r.company === companyFilter);
   }, [records, companyFilter, customCompany]);
+
+  // จำกัดความสูงกล่องตารางให้พอดี 20 แถวแรก (แถวสูงไม่เท่ากันเพราะบางแถวมีปุ่ม) — เกินกว่านั้นเลื่อนดู
+  const recordsBoxRef = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    const box = recordsBoxRef.current;
+    const table = box?.querySelector('table');
+    const rows = table?.tBodies[0]?.rows;
+    const head = table?.tHead;
+    if (!box || !rows || !head) return;
+    if (rows.length <= RECORDS_VISIBLE_ROWS) {
+      box.style.maxHeight = '';
+      return;
+    }
+    let h = head.getBoundingClientRect().height;
+    for (let i = 0; i < RECORDS_VISIBLE_ROWS; i++) {
+      h += rows[i].getBoundingClientRect().height;
+    }
+    box.style.maxHeight = `${Math.ceil(h)}px`;
+  }, [filtered, loading]);
 
   const pendingCount = filtered.filter((r) => r.syncStatus === 'PENDING').length;
   const syncingCount = filtered.filter((r) => r.syncStatus === 'SYNCING').length;
@@ -563,25 +596,25 @@ export default function AdminFlow({
             </div>
           )}
 
-          <div style={{ overflowX: 'auto' }}>
+          <div ref={recordsBoxRef} style={{ overflow: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
               <thead>
                 <tr>
-                  <th style={thStyle}>
+                  <th style={stickyThStyle}>
                     <input type="checkbox" checked={allPendingSelected} onChange={toggleSelectAll} />
                   </th>
-                  <th style={thStyle}>สถานะ EPRO</th>
-                  <th style={thStyle}>วันที่ส่ง EPRO</th>
-                  <th style={thStyle}>ชื่อ</th>
-                  <th style={thStyle}>เลขบัตร</th>
-                  <th style={thStyle}>บริษัท</th>
-                  <th style={thStyle}>ตำแหน่ง</th>
-                  <th style={thStyle}>โซน</th>
-                  <th style={thStyle}>วันที่เริ่ม</th>
-                  <th style={thStyle}>วันที่สิ้นสุด</th>
-                  <th style={thStyle}>แรงงาน (วัน)</th>
-                  <th style={thStyle}>อุบัติเหตุ</th>
-                  <th style={thStyle}>วันที่บันทึก</th>
+                  <th style={stickyThStyle}>สถานะ EPRO</th>
+                  <th style={stickyThStyle}>วันที่ส่ง EPRO</th>
+                  <th style={stickyThStyle}>ชื่อ</th>
+                  <th style={stickyThStyle}>เลขบัตร</th>
+                  <th style={stickyThStyle}>บริษัท</th>
+                  <th style={stickyThStyle}>ตำแหน่ง</th>
+                  <th style={stickyThStyle}>โซน</th>
+                  <th style={stickyThStyle}>วันที่เริ่ม</th>
+                  <th style={stickyThStyle}>วันที่สิ้นสุด</th>
+                  <th style={stickyThStyle}>แรงงาน (วัน)</th>
+                  <th style={stickyThStyle}>อุบัติเหตุ</th>
+                  <th style={stickyThStyle}>วันที่บันทึก</th>
                 </tr>
               </thead>
               <tbody>
