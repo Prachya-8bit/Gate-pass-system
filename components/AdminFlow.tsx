@@ -351,11 +351,11 @@ export default function AdminFlow({
       'ชื่อ-นามสกุล': r.name,
       เลขบัตรประชาชน: r.idCard,
       บริษัท: r.company,
-      ตำแหน่ง: r.job || '-',
+      ชื่อโครงการ: r.job || '-',
       โซน: r.zone || '-',
       วันที่เริ่ม: r.startDate,
       วันที่สิ้นสุด: r.endDate,
-      'แรงงาน (วัน)': r.manDays,
+      'จำนวน Man-day': r.manDays,
       อุบัติเหตุ: r.accident ? 'มี' : 'ไม่มี',
       วันที่บันทึก: r.createdAt,
       'สถานะ EPRO': SYNC_LABELS[r.syncStatus] || r.syncStatus,
@@ -608,7 +608,7 @@ export default function AdminFlow({
                   <th style={stickyThStyle}>ชื่อ</th>
                   <th style={stickyThStyle}>เลขบัตร</th>
                   <th style={stickyThStyle}>บริษัท</th>
-                  <th style={stickyThStyle}>ตำแหน่ง</th>
+                  <th style={stickyThStyle}>ชื่อโครงการ</th>
                   <th style={stickyThStyle}>โซน</th>
                   <th style={stickyThStyle}>วันที่เริ่ม</th>
                   <th style={stickyThStyle}>วันที่สิ้นสุด</th>
