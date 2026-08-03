@@ -5,8 +5,9 @@ import * as XLSX from 'xlsx';
 import { gDS, COMPANIES } from '@/lib/constants';
 import { Btn, GCard, Badge, InpBox, SelBox, TopBar } from '@/components/atoms';
 import { SYNC_LABELS } from '@/lib/sync';
+import ManagerSummary from '@/components/ManagerSummary';
 
-interface RecordRow {
+export interface RecordRow {
   id: string;
   name: string;
   idCard: string;
@@ -491,6 +492,8 @@ export default function AdminFlow({
           <KpiCard label="ส่งแล้ว" value={syncedCount} color={gDS.ok} />
           <KpiCard label="มีปัญหา" value={problemCount} color={gDS.err} />
         </div>
+
+        <ManagerSummary records={filtered} />
 
         <GCard style={{ marginBottom: 16 }}>
           <h3 style={{ margin: '0 0 12px', fontSize: 16, color: gDS.text }}>
