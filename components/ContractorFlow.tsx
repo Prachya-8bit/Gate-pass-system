@@ -236,7 +236,7 @@ export default function ContractorFlow({
                   />
                 )}
                 <InpBox
-                  label="ตำแหน่งงาน"
+                  label="ชื่อโครงการ"
                   value={job}
                   onChange={setJob}
                   placeholder="เช่น ช่างไฟฟ้า"
@@ -364,7 +364,7 @@ export default function ContractorFlow({
                   </div>
                   {job && (
                     <div>
-                      <strong>ตำแหน่งงาน:</strong> {job}
+                      <strong>ชื่อโครงการ:</strong> {job}
                     </div>
                   )}
                   {zone && (

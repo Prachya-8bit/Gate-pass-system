@@ -501,8 +501,8 @@ export default function AdminFlow({
               <thead>
                 <tr>
                   <th style={thStyle}>บริษัท</th>
-                  <th style={thStyle}>จำนวนรายการ</th>
-                  <th style={thStyle}>แรงงาน (วัน)</th>
+                  <th style={thStyle}>จำนวนคน</th>
+                  <th style={thStyle}>จำนวน Man-day</th>
                 </tr>
               </thead>
               <tbody>
@@ -612,7 +612,7 @@ export default function AdminFlow({
                   <th style={stickyThStyle}>โซน</th>
                   <th style={stickyThStyle}>วันที่เริ่ม</th>
                   <th style={stickyThStyle}>วันที่สิ้นสุด</th>
-                  <th style={stickyThStyle}>แรงงาน (วัน)</th>
+                  <th style={stickyThStyle}>จำนวน Man-day</th>
                   <th style={stickyThStyle}>อุบัติเหตุ</th>
                   <th style={stickyThStyle}>วันที่บันทึก</th>
                 </tr>
@@ -800,7 +800,7 @@ export default function AdminFlow({
                   value={newPassword}
                   onChange={setNewPassword}
                   type="password"
-                  placeholder="อย่างน้อย 6 ตัวอักษร"
+                  placeholder="อย่างน้อย 8 ตัวอักษร"
                 />
               </div>
               <div style={{ flex: 1, minWidth: 140 }}>

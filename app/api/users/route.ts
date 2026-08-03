@@ -41,9 +41,9 @@ export async function POST(request: NextRequest) {
   if (!credential || !password) {
     return NextResponse.json({ error: 'กรุณากรอกข้อมูลให้ครบถ้วน' }, { status: 400 });
   }
-  if (password.length < 6) {
+  if (password.length < 8) {
     return NextResponse.json(
-      { error: 'รหัสผ่านต้องมีอย่างน้อย 6 ตัวอักษร' },
+      { error: 'รหัสผ่านต้องมีอย่างน้อย 8 ตัวอักษร' },
       { status: 400 },
     );
   }

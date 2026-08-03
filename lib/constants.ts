@@ -32,9 +32,9 @@ export const COMPANIES = [
 // จำนวนแรงงานสูงสุดต่อการส่ง 1 ครั้ง
 export const MAX_WORKERS_PER_SUBMIT = 10;
 
-// ช่วงวันทำงานที่อนุญาต: วันสิ้นสุดต้องห่างจากวันเริ่ม 1–7 วัน (ห้ามวันเดียวกัน)
+// ช่วงวันทำงานที่อนุญาต: วันสิ้นสุดต้องห่างจากวันเริ่ม 1–6 วัน (ห้ามวันเดียวกัน)
 export const MIN_SPAN_DAYS = 1;
-export const MAX_SPAN_DAYS = 7;
+export const MAX_SPAN_DAYS = 6;
 
 // ระยะห่างเป็นวันระหว่างสองวันที่ (YYYY-MM-DD strings) — ไม่นับหัวนับท้าย
 export function spanDays(startDate: string, endDate: string): number {
