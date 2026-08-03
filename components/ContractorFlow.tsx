@@ -239,13 +239,13 @@ export default function ContractorFlow({
                   label="ชื่อโครงการ"
                   value={job}
                   onChange={setJob}
-                  placeholder="เช่น ช่างไฟฟ้า"
+                  placeholder="เช่น โครงการเปลี่ยนหลังคา SP"
                 />
                 <InpBox
                   label="โซนปฏิบัติงาน"
                   value={zone}
                   onChange={setZone}
-                  placeholder="เช่น Zone A"
+                  placeholder="เช่น SP หรือ RM"
                 />
                 <div style={{ display: 'flex', gap: 12 }}>
                   <div style={{ flex: 1 }}>
