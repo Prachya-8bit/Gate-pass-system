@@ -50,15 +50,17 @@ app/
     records/route.ts         → GET (admin, ?company= filter) / POST (contractor batch)
     records/[id]/route.ts    → PATCH — toggle accident flag
     users/route.ts           → POST — admin creates contractor account
+    companies/route.ts       → GET — company name list for autocomplete (any authenticated role)
 components/
-  atoms.tsx                  → migrated gDS tokens + all shared components
+  atoms.tsx                  → migrated gDS tokens + all shared components (incl. Combobox)
   LoginScreen.tsx
   ContractorFlow.tsx
   AdminFlow.tsx
 lib/
   db.ts                      → Prisma client singleton
   auth.ts                    → getSession(), signToken(), verifyToken()
-  constants.ts               → COMPANIES list, calcMD()
+  constants.ts               → calcMD()
+  companies.ts                → ensureCompanyExists() — auto-adds new company names on record submit
   lib/sync.ts                 → groupKey, SYNC_LABELS, logTransition, constants
   lib/integration-auth.ts     → requireApiKey() for server-to-server endpoints
 prisma/
@@ -71,11 +73,13 @@ middleware.ts                → protect /contractor and /admin routes by role
 
 ## Database schema
 
-See `prisma/schema.prisma`. Two models:
+See `prisma/schema.prisma`. Three models:
 
 **User** — `id`, `credential` (phone or email, unique), `password` (bcrypt), `role` (contractor | admin), `createdAt`
 
 **Record** — `id`, `name`, `idCard`, `company`, `job?`, `zone?`, `startDate`, `endDate`, `manDays`, `accident` (bool, default false), `createdAt`, `createdBy` (→ User.id)
+
+**Company** — `id`, `name` (unique), `createdAt`. Lookup table for the company-name autocomplete on the contractor form and the admin filter — **not** a foreign key of `Record.company` (which stays a plain string). New names typed on the contractor form are auto-inserted via `ensureCompanyExists()` (`lib/companies.ts`) when a batch is submitted — no admin approval step.
 
 - **SyncStatus enum + SyncLog model** — state machine for EPRO sync (see `docs/sync-state-machine.md`)
 - **Business logic moved to backend:** `groupKey()` (record grouping) is in `lib/sync.ts` — RPA no longer groups records
@@ -142,8 +146,8 @@ npx tsc --noEmit
 
 ## Seed data
 
-Default admin only: credential `admin`, password from `SEED_ADMIN_PASSWORD` env var (falls back to `admin123` for local dev — production must set it).
-Demo records were removed (2026-07-15) — records now come from real form submissions, and contractor accounts are created by the admin via the dashboard.
+Default admin + 8 initial companies (the former `COMPANIES` hardcode list): credential `admin`, password from `SEED_ADMIN_PASSWORD` env var (falls back to `admin123` for local dev — production must set it).
+Demo records were removed (2026-07-15) — records now come from real form submissions, and contractor accounts are created by the admin via the dashboard. New companies beyond the initial 8 are added automatically as contractors submit them — no re-seeding needed.
 
 ---
 

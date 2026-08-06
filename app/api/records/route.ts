@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
 import { getSession } from '@/lib/auth';
+import { ensureCompanyExists } from '@/lib/companies';
 import {
   calcMD,
-  COMPANIES,
   spanDays,
   MIN_SPAN_DAYS,
   MAX_SPAN_DAYS,
@@ -70,8 +70,8 @@ export async function POST(request: NextRequest) {
         { status: 400 },
       );
     }
-    if (!r.company || r.company === COMPANIES[0]) {
-      return NextResponse.json({ error: 'กรุณาเลือกบริษัท' }, { status: 400 });
+    if (!r.company?.trim()) {
+      return NextResponse.json({ error: 'กรุณาเลือกหรือระบุชื่อบริษัท' }, { status: 400 });
     }
     if (!r.startDate || !r.endDate || !dateRe.test(r.startDate) || !dateRe.test(r.endDate)) {
       return NextResponse.json(
@@ -94,6 +94,16 @@ export async function POST(request: NextRequest) {
     }
   }
 
+  // เก็บชื่อ canonical ต่อชื่อที่ submit มา กัน "ABB"/"abb" กลายเป็นคนละกลุ่มตอน filter/สรุป man-day
+  const companyNames = new Set(body.map((r) => r.company!.trim()));
+  const canonicalByInput = new Map<string, string>(
+    await Promise.all(
+      [...companyNames].map(
+        async (name) => [name, await ensureCompanyExists(name)] as [string, string],
+      ),
+    ),
+  );
+
   const today = new Date().toISOString().slice(0, 10);
   const created = await prisma.$transaction(
     body.map((r) =>
@@ -101,7 +111,7 @@ export async function POST(request: NextRequest) {
         data: {
           name: r.name!.trim(),
           idCard: r.idCard!,
-          company: r.company!,
+          company: canonicalByInput.get(r.company!.trim())!,
           job: r.job?.trim() || null,
           zone: r.zone?.trim() || null,
           startDate: r.startDate!,
