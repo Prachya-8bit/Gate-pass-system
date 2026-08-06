@@ -1,7 +1,7 @@
 'use client';
 
 // Shared atoms — migrated from prototype gp-atoms.jsx, inline styles only
-import React from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { gDS } from '@/lib/constants';
 
 export type BtnVariant = 'primary' | 'accent' | 'secondary' | 'ghost' | 'ok' | 'danger';
@@ -201,6 +201,108 @@ export function SelBox({
           </option>
         ))}
       </select>
+    </div>
+  );
+}
+
+export function Combobox({
+  label,
+  value,
+  onChange,
+  options,
+  placeholder,
+  error,
+}: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  options: string[];
+  placeholder?: string;
+  error?: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function onOutsideClick(e: MouseEvent) {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    }
+    document.addEventListener('mousedown', onOutsideClick);
+    return () => document.removeEventListener('mousedown', onOutsideClick);
+  }, []);
+
+  const q = value.trim().toLowerCase();
+  const filtered = q
+    ? options.filter((o) => o.toLowerCase().includes(q))
+    : options;
+  const isNewValue = q !== '' && !options.some((o) => o.toLowerCase() === q);
+
+  return (
+    <div style={{ marginBottom: 14, position: 'relative' }} ref={containerRef}>
+      <label style={labelStyle}>{label}</label>
+      <input
+        type="text"
+        value={value}
+        placeholder={placeholder}
+        onChange={(e) => onChange(e.target.value)}
+        onFocus={() => setOpen(true)}
+        onKeyDown={(e) => {
+          if (e.key === 'Escape') setOpen(false);
+        }}
+        style={fieldStyle(error)}
+      />
+      {open && filtered.length > 0 && (
+        <div
+          style={{
+            position: 'absolute',
+            top: '100%',
+            left: 0,
+            right: 0,
+            zIndex: 10,
+            marginTop: 4,
+            background: '#fff',
+            border: `1px solid ${gDS.border}`,
+            borderRadius: gDS.r.s,
+            boxShadow: gDS.sh,
+            maxHeight: 200,
+            overflowY: 'auto',
+          }}
+        >
+          {filtered.map((o) => (
+            <div
+              key={o}
+              onMouseDown={(e) => {
+                e.preventDefault();
+                onChange(o);
+                setOpen(false);
+              }}
+              style={{
+                padding: '8px 12px',
+                fontSize: 14,
+                fontFamily: gDS.font,
+                color: gDS.text,
+                cursor: 'pointer',
+              }}
+              onMouseEnter={(e) => (e.currentTarget.style.background = gDS.bg)}
+              onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+            >
+              {o}
+            </div>
+          ))}
+        </div>
+      )}
+      {isNewValue && !error && (
+        <div style={{ color: gDS.muted, fontSize: 12, marginTop: 4, fontFamily: gDS.font }}>
+          จะบันทึกเป็นบริษัทใหม่
+        </div>
+      )}
+      {error && (
+        <div style={{ color: gDS.err, fontSize: 12, marginTop: 4, fontFamily: gDS.font }}>
+          {error}
+        </div>
+      )}
     </div>
   );
 }

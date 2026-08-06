@@ -57,6 +57,7 @@ graph LR
         T1[("User")]
         T2[("Record")]
         T3[("🔶 SyncLog")]
+        T4[("Company")]
     end
 
     subgraph plant["เครื่องในโรงงาน (WSL)"]
@@ -69,7 +70,7 @@ graph LR
 
     UI --> MW --> PAGES
     UI -->|fetch| API1
-    API1 --> LIB --> T1 & T2 & T3
+    API1 --> LIB --> T1 & T2 & T3 & T4
     API2 --> LIB
     CRON --> SYNC --> SEL
     SYNC -->|x-api-key| API2
@@ -88,9 +89,9 @@ Playwright ต้องรันเบราว์เซอร์จริง �
 |---|---|---|---|
 | **Presentation** | `components/*.tsx` | UI ทั้งหมด (client components) | inline style จาก `gDS` เท่านั้น · ห้าม Tailwind · ห้าม `localStorage` |
 | **Routing / Guard** | `middleware.ts` | กัน `/contractor/*`, `/admin/*` ตาม role | ไม่มี session → redirect `/login` · ผิด role → 403 |
-| **API — ผู้ใช้** | `app/api/{auth,records,users}` | รับคำสั่งจากเบราว์เซอร์ · ตรวจสิทธิ์ด้วย cookie | ทุก route ต้องเรียก `getSession()` ก่อนเสมอ |
+| **API — ผู้ใช้** | `app/api/{auth,records,users,companies}` | รับคำสั่งจากเบราว์เซอร์ · ตรวจสิทธิ์ด้วย cookie | ทุก route ต้องเรียก `getSession()` ก่อนเสมอ |
 | **API — เครื่องต่อเครื่อง** | `app/api/integration/*` | ให้ RPA เรียก · ตรวจสิทธิ์ด้วย `x-api-key` | แยก namespace ชัดเจน ไม่ปนกับ API ผู้ใช้ |
-| **Domain** | `lib/constants.ts` · 🔶 `lib/sync.ts` | `calcMD()`, `COMPANIES`, `gDS` · 🔶 `groupKey()`, transition rules | business rule ทั้งหมดอยู่ที่นี่ ห้ามอยู่ใน RPA หรือ UI |
+| **Domain** | `lib/constants.ts` · `lib/companies.ts` · 🔶 `lib/sync.ts` | `calcMD()`, `gDS` · `ensureCompanyExists()` (auto-add บริษัทใหม่) · 🔶 `groupKey()`, transition rules | business rule ทั้งหมดอยู่ที่นี่ ห้ามอยู่ใน RPA หรือ UI |
 | **Data** | `lib/db.ts` · `prisma/schema.prisma` | Prisma client singleton | เข้าถึง DB ผ่าน Prisma เท่านั้น |
 
 **หลักที่ยึด:** ผู้รับเหมาและ RPA ไม่เคยตัดสินใจเชิงธุรกิจ — server เป็นคนตัดสินทั้งหมด (คำนวณ man-day, จัดกลุ่มใบงาน, อนุญาต transition)
@@ -103,6 +104,7 @@ Playwright ต้องรันเบราว์เซอร์จริง �
 erDiagram
     User ||--o{ Record : "createdBy"
     Record ||..o{ SyncLog : "recordId (ไม่มี FK)"
+    Record ||..o{ Company : "company (ชื่อ string เดียวกัน ไม่มี FK)"
 
     User {
         string id PK "cuid"
@@ -140,7 +142,14 @@ erDiagram
         string error
         datetime createdAt
     }
+    Company {
+        string id PK "cuid"
+        string name UK "case-sensitive unique · เทียบ insensitive ก่อน insert"
+        datetime createdAt
+    }
 ```
+
+**`Company`** เป็น lookup table สำหรับ autocomplete เท่านั้น ไม่มี FK กับ `Record.company` — ผู้รับเหมาพิมพ์ชื่อบริษัทใหม่ที่ไม่มีใน list ได้เสมอ (`POST /api/records` จะ upsert ชื่อนั้นเข้า `Company` อัตโนมัติผ่าน `ensureCompanyExists()`)
 
 **ข้อสังเกตเรื่องชนิดข้อมูล:** วันที่เชิงธุรกิจ (`startDate`, `endDate`, `createdAt`) เก็บเป็น `String` รูปแบบ `YYYY-MM-DD` เพราะเป็นวันที่ล้วนและเรียง/เทียบแบบ string ได้ถูกต้อง ส่วน timestamp ของระบบ sync (🔶 `claimedAt`, `syncedAt`) ใช้ `DateTime` เพราะต้องการความละเอียดระดับวินาทีเพื่อคำนวณ timeout/backoff
 

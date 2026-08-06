@@ -2,7 +2,7 @@
 
 import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import * as XLSX from 'xlsx';
-import { gDS, COMPANIES } from '@/lib/constants';
+import { gDS } from '@/lib/constants';
 import { Btn, GCard, Badge, InpBox, SelBox, TopBar } from '@/components/atoms';
 import { SYNC_LABELS } from '@/lib/sync';
 import ManagerSummary from '@/components/ManagerSummary';
@@ -100,6 +100,7 @@ export default function AdminFlow({
 }) {
   const [records, setRecords] = useState<RecordRow[]>([]);
   const [loading, setLoading] = useState(true);
+  const [companies, setCompanies] = useState<string[]>([]);
   const [companyFilter, setCompanyFilter] = useState('ทั้งหมด');
   const [customCompany, setCustomCompany] = useState('');
   const [newCredential, setNewCredential] = useState('');
@@ -143,9 +144,15 @@ export default function AdminFlow({
     }
   }
 
+  async function loadCompanies() {
+    const res = await fetch('/api/companies');
+    if (res.ok) setCompanies(await res.json());
+  }
+
   useEffect(() => {
     load();
     loadUsers();
+    loadCompanies();
   }, []);
 
   function startEditName(u: UserRow) {
@@ -551,7 +558,7 @@ export default function AdminFlow({
                     setCompanyFilter(v);
                     if (v !== 'อื่นๆ') setCustomCompany('');
                   }}
-                  options={['ทั้งหมด', ...COMPANIES.slice(1)]}
+                  options={['ทั้งหมด', ...companies, 'อื่นๆ']}
                 />
               </div>
               {companyFilter === 'อื่นๆ' && (

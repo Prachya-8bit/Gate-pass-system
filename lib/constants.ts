@@ -16,19 +16,6 @@ export const gDS = {
   sh: '0 2px 8px rgba(0,0,0,0.08)',
 } as const;
 
-export const COMPANIES = [
-  '— เลือกบริษัท —',
-  'ABB',
-  'BRAINIC',
-  'C.E.MECH',
-  'FUJI',
-  'InspiredTech',
-  'Innomatic',
-  'MATFORCON',
-  'P-WINNER',
-  'อื่นๆ',
-];
-
 // จำนวนแรงงานสูงสุดต่อการส่ง 1 ครั้ง
 export const MAX_WORKERS_PER_SUBMIT = 10;
 

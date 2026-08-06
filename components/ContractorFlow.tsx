@@ -1,9 +1,8 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   gDS,
-  COMPANIES,
   calcMD,
   addDays,
   spanDays,
@@ -14,7 +13,7 @@ import {
 import {
   Btn,
   InpBox,
-  SelBox,
+  Combobox,
   DatePick,
   GCard,
   StepBar,
@@ -54,8 +53,8 @@ export default function ContractorFlow({
   role: string;
 }) {
   const [step, setStep] = useState(0);
-  const [company, setCompany] = useState(COMPANIES[0]);
-  const [customCompany, setCustomCompany] = useState('');
+  const [company, setCompany] = useState('');
+  const [companies, setCompanies] = useState<string[]>([]);
   const [job, setJob] = useState('');
   const [zone, setZone] = useState('');
   const [startDate, setStartDate] = useState('');
@@ -66,7 +65,13 @@ export default function ContractorFlow({
   const [done, setDone] = useState(false);
 
   const manDays = calcMD(startDate, endDate);
-  const effectiveCompany = company === 'อื่นๆ' ? customCompany.trim() : company;
+
+  useEffect(() => {
+    fetch('/api/companies')
+      .then((res) => (res.ok ? res.json() : []))
+      .then(setCompanies)
+      .catch(() => {});
+  }, []);
 
   // วันสิ้นสุดเลือกได้เฉพาะ 1–7 วันหลังวันที่เริ่ม
   const endMin = startDate ? addDays(startDate, MIN_SPAN_DAYS) : undefined;
@@ -89,12 +94,8 @@ export default function ContractorFlow({
   function next() {
     setError('');
     if (step === 0) {
-      if (!company || company === COMPANIES[0]) {
-        setError('กรุณาเลือกบริษัท');
-        return;
-      }
-      if (company === 'อื่นๆ' && !customCompany.trim()) {
-        setError('กรุณาระบุชื่อบริษัท');
+      if (!company.trim()) {
+        setError('กรุณาเลือกหรือระบุชื่อบริษัท');
         return;
       }
       if (!startDate || !endDate) {
@@ -145,7 +146,7 @@ export default function ContractorFlow({
           workers.map((w) => ({
             name: w.name.trim(),
             idCard: w.idCard,
-            company: effectiveCompany,
+            company: company.trim(),
             job: job.trim(),
             zone: zone.trim(),
             startDate,
@@ -177,8 +178,7 @@ export default function ContractorFlow({
 
   function reset() {
     setStep(0);
-    setCompany(COMPANIES[0]);
-    setCustomCompany('');
+    setCompany('');
     setJob('');
     setZone('');
     setStartDate('');
@@ -226,15 +226,13 @@ export default function ContractorFlow({
                 <h2 style={{ margin: '0 0 14px', fontSize: 18, color: gDS.text }}>
                   ข้อมูลงาน
                 </h2>
-                <SelBox label="บริษัท" value={company} onChange={setCompany} options={COMPANIES} />
-                {company === 'อื่นๆ' && (
-                  <InpBox
-                    label="ชื่อบริษัท"
-                    value={customCompany}
-                    onChange={setCustomCompany}
-                    placeholder="กรุณาระบุชื่อบริษัท"
-                  />
-                )}
+                <Combobox
+                  label="บริษัท"
+                  value={company}
+                  onChange={setCompany}
+                  options={companies}
+                  placeholder="เลือกหรือพิมพ์ชื่อบริษัท"
+                />
                 <InpBox
                   label="ชื่อโครงการ"
                   value={job}
@@ -360,7 +358,7 @@ export default function ContractorFlow({
                   }}
                 >
                   <div>
-                    <strong>บริษัท:</strong> {effectiveCompany}
+                    <strong>บริษัท:</strong> {company.trim()}
                   </div>
                   {job && (
                     <div>
