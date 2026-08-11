@@ -53,6 +53,12 @@ automation/logs/
 # vercel
 .vercel
 
+# source design assets — not needed once copied into public/
+UI/SYS Single Logo.jpg
+UI/SYS Single Logo.wmf
+UI/workers.png
+UI/example.jpg
+
 # typescript
 *.tsbuildinfo
 next-env.d.ts

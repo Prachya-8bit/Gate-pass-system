@@ -1,8 +1,9 @@
 'use client';
 
 import React, { useState } from 'react';
+import Image from 'next/image';
 import { gDS } from '@/lib/constants';
-import { Btn, InpBox, GCard, Logo } from '@/components/atoms';
+import { Btn, InpBox, GCard } from '@/components/atoms';
 
 export default function LoginScreen() {
   const [credential, setCredential] = useState('');
@@ -42,60 +43,97 @@ export default function LoginScreen() {
       style={{
         minHeight: '100vh',
         display: 'flex',
+        flexDirection: 'column',
         alignItems: 'center',
-        justifyContent: 'center',
         background: gDS.bg,
         fontFamily: gDS.font,
-        padding: 20,
+        overflow: 'hidden',
       }}
     >
-      <GCard style={{ width: '100%', maxWidth: 400, padding: 28 }}>
-        <div style={{ textAlign: 'center', marginBottom: 8 }}>
-          <Logo />
-        </div>
-        <p
-          style={{
-            textAlign: 'center',
-            color: gDS.muted,
-            fontSize: 14,
-            margin: '0 0 20px',
-          }}
-        >
-          เข้าสู่ระบบ
-        </p>
-        <form onSubmit={submit}>
-          <InpBox
-            label="เบอร์โทรหรืออีเมล"
-            value={credential}
-            onChange={setCredential}
-            placeholder="เช่น 0891234567"
-          />
-          <InpBox
-            label="รหัสผ่าน"
-            value={password}
-            onChange={setPassword}
-            type="password"
-            placeholder="รหัสผ่าน"
-          />
-          {error && (
-            <div
+      <div
+        style={{
+          flex: 1,
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          justifyContent: 'center',
+          width: '100%',
+          padding: '20px 20px 0',
+        }}
+      >
+        <Image
+          src="/sys-logo.jpg"
+          alt="SYS"
+          width={220}
+          height={124}
+          style={{ width: 220, height: 'auto', borderRadius: gDS.r.m, marginBottom: 28 }}
+          priority
+        />
+        <GCard style={{ width: '100%', maxWidth: 400, padding: 28 }}>
+          <div style={{ textAlign: 'center', marginBottom: 22 }}>
+            <h1
               style={{
-                background: gDS.errBg,
-                color: gDS.err,
-                fontSize: 13,
-                padding: '10px 12px',
-                borderRadius: gDS.r.s,
-                marginBottom: 14,
+                margin: 0,
+                fontSize: 22,
+                fontWeight: 700,
+                color: gDS.primary,
+                fontFamily: gDS.font,
               }}
             >
-              {error}
-            </div>
-          )}
-          <Btn type="submit" disabled={loading} style={{ width: '100%' }}>
-            {loading ? 'กำลังเข้าสู่ระบบ...' : 'เข้าสู่ระบบ'}
-          </Btn>
-        </form>
-      </GCard>
+              ระบบ Gate Pass
+            </h1>
+            <p
+              style={{
+                margin: '6px 0 0',
+                color: gDS.muted,
+                fontSize: 14,
+                fontFamily: gDS.font,
+              }}
+            >
+              เข้าสู่ระบบ
+            </p>
+          </div>
+          <form onSubmit={submit}>
+            <InpBox
+              label="เบอร์โทรหรืออีเมล"
+              value={credential}
+              onChange={setCredential}
+              placeholder="เช่น 0891234567"
+            />
+            <InpBox
+              label="รหัสผ่าน"
+              value={password}
+              onChange={setPassword}
+              type="password"
+              placeholder="รหัสผ่าน"
+            />
+            {error && (
+              <div
+                style={{
+                  background: gDS.errBg,
+                  color: gDS.err,
+                  fontSize: 13,
+                  padding: '10px 12px',
+                  borderRadius: gDS.r.s,
+                  marginBottom: 14,
+                }}
+              >
+                {error}
+              </div>
+            )}
+            <Btn type="submit" disabled={loading} style={{ width: '100%' }}>
+              {loading ? 'กำลังเข้าสู่ระบบ...' : 'เข้าสู่ระบบ'}
+            </Btn>
+          </form>
+        </GCard>
+      </div>
+      <Image
+        src="/workers.png"
+        alt=""
+        width={1203}
+        height={444}
+        style={{ width: '100%', maxWidth: 560, height: 'auto', display: 'block' }}
+      />
     </div>
   );
 }
