@@ -92,9 +92,14 @@
 | `ไม่มีสิทธิ์เข้าถึง` | **401** | `integration/*` | ฝั่ง **client** ส่ง `x-api-key` ผิดหรือไม่ได้ส่ง — ค่าใน `automation/.env` ต้องตรงกับที่ตั้งใน Vercel |
 | `ต้องระบุ runId` | 400 | `POST /api/integration/claim` | — |
 | `ต้องระบุ runId, batchKey, result` | 400 | `POST /api/integration/report` | — |
+| `ระบบฐานข้อมูลไม่พร้อมใช้งาน กรุณาลองใหม่` | **503** | `POST /api/integration/claim` | transaction ล้ม (เกือบทั้งหมดคือ Neon cold start → `P2028`) — **retry ได้** RPA จะข้ามรอบแล้วเอาต่อรอบหน้าเอง ดูสาเหตุจริงใน Vercel Runtime Logs (`claim transaction failed`) |
 | `รูปแบบวันที่ต้องเป็น YYYY-MM-DD` | 400 | `GET /api/integration/records` | query `from` / `to` ผิดรูป |
 
-> **แยก 401 กับ 503 ให้ออก:** 401 = กุญแจผิด (แก้ที่ฝั่ง RPA), 503 = server ไม่มีกุญแจ (แก้ที่ Vercel)
+> **แยก 401 กับ 503 ให้ออก:** 401 = กุญแจผิด (แก้ที่ฝั่ง RPA), 503 = ปัญหาฝั่ง server
+>
+> **⚠️ 503 มี 2 ความหมาย — ต้องอ่านข้อความประกอบ:**
+> - `ระบบยังไม่ได้ตั้งค่า INTEGRATION_API_KEY` = ลืมตั้ง env var → แก้ที่ Vercel
+> - `ระบบฐานข้อมูลไม่พร้อมใช้งาน กรุณาลองใหม่` = DB ไม่พร้อมชั่วคราว → **ไม่ต้องแก้อะไร** rerun เอง
 
 ---
 
@@ -105,7 +110,8 @@
 | `login สำเร็จ` | เข้า epro ได้แล้ว | — |
 | `ไม่มีใบงานที่ต้องส่ง — จบการทำงาน` | ไม่มี record สถานะ `CONFIRMED` รออยู่ | ปกติ ไม่ใช่ error |
 | `ข้ามรอบนี้ — sync ก่อนหน้ายังทำงานอยู่` | `flock` กันไม่ให้ 2 รอบชนกัน | ปกติ ถ้าขึ้นติดกันหลายรอบแปลว่ารอบก่อนค้าง |
-| `claim ล้มเหลว HTTP <code>` | ยิง `/api/integration/claim` ไม่ผ่าน → **หยุดทั้งรอบ ไม่ส่งอะไรเลย** | ดูหัวข้อ 6 |
+| `claim ล้มเหลว HTTP <5xx> — ข้ามรอบนี้ รอ cron รอบถัดไป` | server ไม่พร้อมชั่วคราว **ยังไม่ได้ claim อะไร ไม่มีข้อมูลเสียหาย** จบด้วย exit 0 | ปกติถ้านานๆ ครั้ง — ถ้าถี่ดูหัวข้อ 6 |
+| `claim ล้มเหลว HTTP <4xx> — ตรวจ API key / GATEPASS_URL` | config ผิด (key ไม่ตรง / URL ผิด / ยังไม่ deploy) จบด้วย exit 1 | ต้องมีคนแก้ ดูหัวข้อ 6 |
 | `report ครั้งที่ N ไม่สำเร็จ (HTTP <code>)` | ส่ง epro แล้ว แต่รายงานผลกลับไม่ได้ | จะ retry อัตโนมัติ 3 ครั้ง |
 | `⚠️ report ไม่สำเร็จหลังจากลอง 3 ครั้ง` | **อันตราย** — ข้อมูลเข้า epro แล้วแต่ระบบไม่รู้ | record ค้าง `SYNCING` → reaper จะเปลี่ยนเป็น `NEEDS_REVIEW` ใน 30 นาที แล้วต้องมาตรวจเองว่าเข้า epro จริงไหม |
 | `selectors.mjs ยังมีช่องที่เป็น #TODO` | ยังไม่ได้เติม selector หน้า login | เปิดหน้า login จริง เซฟเป็น `pages/login-real.html` แล้วเติม selector |
@@ -164,26 +170,28 @@
 
 นี่คือ error ที่เจอบ่อยที่สุดใน `sync.log` และทำให้ sync ทั้งรอบไม่ทำงาน
 
+### HTTP 503 `ระบบฐานข้อมูลไม่พร้อมใช้งาน`
+
+**นี่คือกรณีที่เคยเป็น HTTP 500 ดิบ — แก้แล้ว** (เดิม `claim` ครอบทุกอย่างใน `prisma.$transaction` โดยไม่มี `try`/`catch` และไม่ตั้ง `timeout` error จากฐานข้อมูลจึงกลายเป็น 500 ที่ไม่มีข้อความ และ RPA `exit 1` ทิ้งงานทั้งรอบ)
+
+ตอนนี้ [app/api/integration/claim/route.ts](../app/api/integration/claim/route.ts) ตั้ง `{ timeout: 20_000, maxWait: 10_000 }` และดัก exception คืน 503 พร้อมข้อความไทย ส่วน RPA แยก **5xx = ข้ามรอบ (exit 0)** ออกจาก **4xx = config ผิด (exit 1)**
+
+**ผลคือ:** DB สะดุดชั่วคราวกลายเป็นความล่าช้า 15 นาที ไม่ใช่การทิ้งงานทั้งรอบ **ไม่ต้องทำอะไร** ถ้าเจอนานๆ ครั้ง
+
+**ถ้าเจอถี่** ให้เปิด Vercel → Runtime Logs หา `claim transaction failed` แล้วดูสาเหตุจริง:
+1. **Prisma interactive transaction timeout** — `P2028` / `Transaction already closed` (Neon cold start กินเวลาเกิน)
+2. **Neon connection / pool exhaustion** บน Vercel serverless — เช็คว่า `DATABASE_URL` เป็น **pooled** connection
+
+**ข้อสังเกตที่ใช้ตั้งสมมติฐานได้:** เทียบเวลาในรอบที่พังกับรอบที่ผ่าน — รอบที่พังใช้เวลาเท่าตัวคือสัญญาณของ timeout
+
+```
+18:00:01 → 18:00:12   claim ล้มเหลว HTTP 503 — ข้ามรอบนี้   (12 วินาที)
+18:15:01 → 18:15:07   ไม่มีใบงานที่ต้องส่ง                  (6 วินาที)
+```
+
 ### HTTP 500
 
-**สิ่งที่รู้แน่:** ไม่ใช่ปัญหาสิทธิ์ (สิทธิ์จะเป็น 401 หรือ 503) และไม่ใช่ payload ผิด (จะเป็น 400)
-
-[app/api/integration/claim/route.ts](../app/api/integration/claim/route.ts) ครอบทุกอย่างไว้ใน `prisma.$transaction` **โดยไม่มี `try`/`catch`** ดังนั้น error ใดๆ จากฐานข้อมูลจะกลายเป็น 500 ดิบๆ ที่ไม่มีข้อความบอกสาเหตุ
-
-**ข้อสังเกตที่ใช้ตั้งสมมติฐานได้:** เทียบเวลาในรอบที่พังกับรอบที่ผ่าน
-
-```
-18:00:01 → 18:00:12   claim ล้มเหลว HTTP 500     (12 วินาที)
-18:15:01 → 18:15:07   ไม่มีใบงานที่ต้องส่ง        (6 วินาที)
-```
-
-รอบที่พังใช้เวลา**เท่าตัว** ซึ่งเข้าทาง 2 สาเหตุ:
-1. **Prisma interactive transaction timeout** — ค่า default คือ 5 วินาที ถ้า query แรกเจอ Neon cold start จะเกินทันที (Prisma error `P2028`)
-2. **Neon connection / pool exhaustion** บน Vercel serverless
-
-**วิธีตรวจ:** เปิด Vercel → Runtime Logs → กรองเวลาที่ตรงกับ log แล้วมองหา `P2028`, `Transaction already closed`, หรือ connection error
-
-**ถ้าจะแก้** (เป็นงานแยก ไม่ได้ทำในเอกสารนี้): เพิ่ม `try`/`catch` รอบ `$transaction` เพื่อคืน error ที่อ่านออกแทน 500 ดิบ และตั้ง `timeout` / `maxWait` ให้ `$transaction` สูงขึ้น
+เหลือเฉพาะกรณีที่**ไม่มีใครดัก** — ไม่ใช่ปัญหาสิทธิ์ (401/503) ไม่ใช่ payload ผิด (400) และไม่ใช่ transaction ของ claim (503 แล้ว) เช่น `ensureCompanyExists()` เจอ unique violation ตอนสองคนยื่นชื่อบริษัทใหม่ชื่อเดียวกันพร้อมกัน ให้ดู Vercel Runtime Logs
 
 ### HTTP 404
 

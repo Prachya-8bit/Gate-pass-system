@@ -108,7 +108,14 @@ try {
       body: JSON.stringify({ runId }),
     });
     if (!claimRes.ok) {
-      console.error(`claim ล้มเหลว HTTP ${claimRes.status} — หยุดการทำงาน`);
+      // 5xx = ฝั่ง server ไม่พร้อม (Neon cold start / transaction timeout) — retry ได้
+      // ข้ามรอบนี้เฉยๆ ยังไม่ได้ claim อะไร ไม่มีข้อมูลเสียหาย cron รอบหน้าเอาต่อ
+      if (claimRes.status >= 500) {
+        console.error(`claim ล้มเหลว HTTP ${claimRes.status} — ข้ามรอบนี้ รอ cron รอบถัดไป`);
+        break;
+      }
+      // 400/401/403/404 = config ผิด (API key / GATEPASS_URL / ยังไม่ deploy) — ต้องมีคนแก้
+      console.error(`claim ล้มเหลว HTTP ${claimRes.status} — ตรวจ API key / GATEPASS_URL`);
       process.exit(1);
     }
     const payload = await claimRes.json();
