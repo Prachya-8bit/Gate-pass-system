@@ -220,6 +220,28 @@ export function SelBox({
   );
 }
 
+// ลิงก์กลับหน้าเมนูผู้รับเหมา วางเป็นตัวแรกในคอลัมน์ของฟอร์ม
+//
+// ใช้ <a> เต็ม navigation ตามสไตล์เดิมของโปรเจกต์ (ไม่มี next/link ที่ไหนเลย)
+// และไม่แตะ TopBar เพราะมันเป็น position:fixed ใช้ร่วมกับ /admin และไม่มี slot
+export function BackLink({ href, children }: { href: string; children: React.ReactNode }) {
+  return (
+    <a
+      href={href}
+      style={{
+        display: 'inline-block',
+        marginBottom: 12,
+        fontSize: 13,
+        color: gDS.muted,
+        textDecoration: 'none',
+        fontFamily: gDS.font,
+      }}
+    >
+      {children}
+    </a>
+  );
+}
+
 // textarea — ใช้กับช่องที่ EPRO เป็น textarea เช่น "เหตุผลที่ต้องใช้รถ"
 // แยกเป็น component ใหม่ ไม่สอน InpBox ให้ render textarea แบบมีเงื่อนไข
 // เพราะ InpBox เป็น atom ที่ใช้มากสุดในแอป ไม่คุ้มเสี่ยง

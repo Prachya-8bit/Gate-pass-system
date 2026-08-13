@@ -32,8 +32,19 @@ export const PLANTS: { value: string; label: string }[] = [
   { value: '4951', label: 'SYS-BDC' },
 ];
 
+/** value → label เช่น "4911" → "SYS-MTP" ใช้แสดงค่าที่เก็บไว้แล้ว */
 export const PLANT_LABELS: Record<string, string> = Object.fromEntries(
   PLANTS.map((p) => [p.value, p.label]),
+);
+
+/**
+ * label → value เช่น "SYS-MTP" → "4911"
+ *
+ * SelBox เก็บค่าเท่ากับที่แสดง (options เป็น string[]) ฟอร์มจึงถือ label ไว้
+ * แล้วแปลงเป็น value ตอนส่ง API — ที่บันทึกลง DB และส่งให้ EPRO ต้องเป็น value
+ */
+export const PLANT_VALUE_BY_LABEL: Record<string, string> = Object.fromEntries(
+  PLANTS.map((p) => [p.label, p.value]),
 );
 
 /**

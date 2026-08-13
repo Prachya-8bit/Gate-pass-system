@@ -11,6 +11,7 @@ import {
   MAX_WORKERS_PER_SUBMIT,
 } from '@/lib/constants';
 import {
+  BackLink,
   Btn,
   InpBox,
   Combobox,
@@ -193,6 +194,7 @@ export default function ContractorFlow({
     <div style={{ minHeight: '100vh', background: gDS.bg, fontFamily: gDS.font }}>
       <TopBar credential={credential} role={role} onLogout={logout} />
       <div style={{ maxWidth: 520, margin: '0 auto', padding: '84px 16px 40px' }}>
+        <BackLink href="/contractor">← กลับหน้าเมนู</BackLink>
         {done ? (
           <GCard style={{ textAlign: 'center', padding: 32 }}>
             <div style={{ fontSize: 44, marginBottom: 8 }}>✅</div>
