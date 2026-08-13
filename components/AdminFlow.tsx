@@ -7,6 +7,7 @@ import { Btn, GCard, Badge, InpBox, SelBox, TopBar } from '@/components/atoms';
 import { SYNC_LABELS } from '@/lib/sync';
 import ManagerSummary from '@/components/ManagerSummary';
 import SyncCell from '@/components/SyncCell';
+import VehicleRequests from '@/components/VehicleRequests';
 
 export interface RecordRow {
   id: string;
@@ -621,6 +622,8 @@ export default function AdminFlow({
             </table>
           </div>
         </GCard>
+
+        <VehicleRequests companyFilter={companyFilter} customCompany={customCompany} />
 
         <GCard>
           <h3 style={{ margin: '0 0 12px', fontSize: 16, color: gDS.text }}>
