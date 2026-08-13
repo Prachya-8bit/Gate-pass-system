@@ -6,6 +6,7 @@ import { gDS } from '@/lib/constants';
 import { Btn, GCard, Badge, InpBox, SelBox, TopBar } from '@/components/atoms';
 import { SYNC_LABELS } from '@/lib/sync';
 import ManagerSummary from '@/components/ManagerSummary';
+import SyncCell from '@/components/SyncCell';
 
 export interface RecordRow {
   id: string;
@@ -67,11 +68,6 @@ const stickyThStyle: React.CSSProperties = {
   // border-collapse ทำให้เส้นขอบของ th ที่ sticky หายตอนเลื่อน — ใช้ inset shadow แทน
   borderBottom: 'none',
   boxShadow: `inset 0 -2px 0 ${gDS.border}`,
-};
-
-const smallBtnStyle: React.CSSProperties = {
-  padding: '4px 10px',
-  fontSize: 12,
 };
 
 function KpiCard({
@@ -409,69 +405,6 @@ export default function AdminFlow({
     }
   }
 
-  function renderSyncCell(r: RecordRow) {
-    switch (r.syncStatus) {
-      case 'PENDING':
-        return (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-            <Badge color="gray">{SYNC_LABELS.PENDING}</Badge>
-            <Btn variant="accent" style={smallBtnStyle} onClick={() => action(r.id, 'confirm')}>
-              ยืนยัน
-            </Btn>
-          </div>
-        );
-      case 'CONFIRMED':
-        return (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-            <Badge color="amber">{SYNC_LABELS.CONFIRMED}</Badge>
-            <Btn variant="secondary" style={smallBtnStyle} onClick={() => action(r.id, 'unconfirm')}>
-              ยกเลิก
-            </Btn>
-          </div>
-        );
-      case 'SYNCING':
-        return <Badge color="blue">{SYNC_LABELS.SYNCING}</Badge>;
-      case 'SYNCED':
-        return (
-          <span title={r.syncedAt ? r.syncedAt.slice(0, 10) : undefined}>
-            <Badge color="green">{SYNC_LABELS.SYNCED}</Badge>
-          </span>
-        );
-      case 'FAILED':
-        return (
-          <div
-            style={{ display: 'flex', alignItems: 'center', gap: 6 }}
-            title={r.lastSyncError || undefined}
-          >
-            <Badge color="red">{SYNC_LABELS.FAILED}</Badge>
-            <Btn variant="danger" style={smallBtnStyle} onClick={() => action(r.id, 'retry')}>
-              ลองใหม่
-            </Btn>
-          </div>
-        );
-      case 'NEEDS_REVIEW':
-        return (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-            <Badge color="red">{SYNC_LABELS.NEEDS_REVIEW}</Badge>
-            <Btn variant="ok" style={smallBtnStyle} onClick={() => action(r.id, 'resolveSynced')}>
-              ส่งแล้ว
-            </Btn>
-            <Btn
-              variant="secondary"
-              style={smallBtnStyle}
-              onClick={() => action(r.id, 'resolveNotSynced')}
-            >
-              ยังไม่ส่ง
-            </Btn>
-          </div>
-        );
-      case 'CANCELLED':
-        return <Badge color="gray">{SYNC_LABELS.CANCELLED}</Badge>;
-      default:
-        return <Badge color="gray">{r.syncStatus}</Badge>;
-    }
-  }
-
   return (
     <div style={{ minHeight: '100vh', background: gDS.bg, fontFamily: gDS.font }}>
       <TopBar credential={credential} role={role} onLogout={logout} />
@@ -653,7 +586,14 @@ export default function AdminFlow({
                         />
                       )}
                     </td>
-                    <td style={tdStyle}>{renderSyncCell(r)}</td>
+                    <td style={tdStyle}>
+                      <SyncCell
+                        status={r.syncStatus}
+                        syncedAt={r.syncedAt}
+                        lastSyncError={r.lastSyncError}
+                        onAction={(a) => action(r.id, a)}
+                      />
+                    </td>
                     <td style={tdStyle}>{r.syncedAt ? r.syncedAt.slice(0, 10) : '-'}</td>
                     <td style={tdStyle}>{r.name}</td>
                     <td style={tdStyle}>{r.idCard}</td>
