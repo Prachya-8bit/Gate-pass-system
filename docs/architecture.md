@@ -4,10 +4,11 @@
 
 | | |
 |---|---|
-| สถานะเอกสาร | สะท้อนโค้ดจริง ณ 2026-07-25 · ส่วนที่ยังไม่ได้ทำกำกับด้วย 🔶 **(แผน)** |
+| สถานะเอกสาร | สะท้อนโค้ดจริง ณ 2026-08-13 · **หมายเหตุ 🔶 ในเอกสารนี้ล้าสมัยแล้ว** — ตอนที่เขียนหมายถึง "ยังไม่ได้ทำ" แต่ sync state machine ทำเสร็จและใช้งานจริงแล้ว |
 | ผู้ใช้ | ผู้รับเหมา + Admin ความปลอดภัย ของโรงงานอุตสาหกรรมไทย |
 | ภาษา UI | ไทยทั้งหมด |
-| เอกสารที่เกี่ยวข้อง | [`sync-state-machine.md`](./sync-state-machine.md) · [`eprocurement-integration.md`](./eprocurement-integration.md) |
+| ขอบเขต | 2 ฟอร์ม: ลงทะเบียนแรงงาน (`FrmWorker.aspx`) · ขออนุมัตินำรถยนต์เข้าโรงงาน (`FrmOperation.aspx`) |
+| เอกสารที่เกี่ยวข้อง | [`sync-state-machine.md`](./sync-state-machine.md) (ภาคผนวก 2 = ฝั่งรถ) · [`error-reference.md`](./error-reference.md) · [`eprocurement-integration.md`](./eprocurement-integration.md) · [`../automation/README.md`](../automation/README.md) |
 
 ---
 
@@ -42,40 +43,48 @@ graph TB
 ```mermaid
 graph LR
     subgraph browser["เบราว์เซอร์"]
-        UI["React 19 Client Components<br/>ContractorFlow · AdminFlow · LoginScreen<br/>inline styles (gDS) · xlsx export"]
+        UI["React 19 Client Components<br/>ContractorMenu · ContractorFlow · VehicleFlow<br/>AdminFlow + VehicleRequests · LoginScreen<br/>inline styles (gDS) · xlsx export"]
     end
 
     subgraph vercel["Vercel — Fluid Compute"]
         MW["middleware.ts<br/>ตรวจ JWT + role"]
-        PAGES["App Router pages<br/>/login /contractor /admin"]
-        API1["API: ผู้ใช้<br/>auth · records · users"]
-        API2["API: เครื่องต่อเครื่อง<br/>/api/integration/*"]
-        LIB["lib/ — auth · db · constants<br/>🔶 sync · integration-auth"]
+        PAGES["App Router pages<br/>/login · /contractor · /contractor/workers<br/>/contractor/vehicle · /admin"]
+        API1["API: ผู้ใช้<br/>auth · records · vehicle-requests · users"]
+        API2["API: เครื่องต่อเครื่อง<br/>/api/integration/*<br/>claim·report + vehicle-claim·vehicle-report"]
+        LIB["lib/ — auth · db · constants<br/>sync · vehicle · integration-auth"]
     end
 
     subgraph neon["Neon PostgreSQL"]
         T1[("User")]
         T2[("Record")]
-        T3[("🔶 SyncLog")]
+        T3[("SyncLog<br/>kind: record / vehicle")]
         T4[("Company")]
+        T5[("VehicleRequest")]
     end
 
     subgraph plant["เครื่องในโรงงาน (WSL)"]
-        CRON["cron ทุก 15 นาที<br/>run-sync.sh + flock"]
+        CRON["cron ทุก 15 นาที<br/>run-sync.sh + flock (lock เดียว)"]
         SYNC["epro-sync.mjs<br/>Playwright chromium (headless)"]
-        SEL["selectors.mjs"]
+        SYNCV["epro-sync-vehicle.mjs<br/>รันต่อจากตัวบน"]
+        SEL["selectors.mjs<br/>regForm + vehicleForm"]
     end
 
     EPRO["EPRO FrmWorker.aspx"]
+    EPROV["EPRO FrmOperation.aspx<br/>(ยานพาหนะ → ปฏิบัติงานในโรงงาน)"]
 
     UI --> MW --> PAGES
     UI -->|fetch| API1
-    API1 --> LIB --> T1 & T2 & T3 & T4
+    API1 --> LIB --> T1 & T2 & T3 & T4 & T5
     API2 --> LIB
     CRON --> SYNC --> SEL
+    CRON --> SYNCV --> SEL
     SYNC -->|x-api-key| API2
+    SYNCV -->|x-api-key| API2
     SYNC -->|browser| EPRO
+    SYNCV -->|browser| EPROV
 ```
+
+**สคริปต์ RPA แยกไฟล์ แต่ cron entry เดียวและ `flock` เดียว** — `epro-sync.mjs` จึงเหมือนเดิมทุก byte เส้นทางคนงานที่ใช้ production อยู่พังจากงานฝั่งรถไม่ได้ และ lock ตัวเดียวกันกันไม่ให้มี browser สองตัว login บัญชี EPRO เดียวกันพร้อมกัน (ถ้าแยก cron entry จะได้ session ชนกัน หรือถ้าแชร์ lock รถจะถูก skip เกือบทุกรอบแบบเงียบ) ราคาที่รับคือ **login EPRO 2 ครั้งต่อรอบ**
 
 ### ทำไมแยก RPA ออกจาก Vercel
 
@@ -89,9 +98,9 @@ Playwright ต้องรันเบราว์เซอร์จริง �
 |---|---|---|---|
 | **Presentation** | `components/*.tsx` | UI ทั้งหมด (client components) | inline style จาก `gDS` เท่านั้น · ห้าม Tailwind · ห้าม `localStorage` |
 | **Routing / Guard** | `middleware.ts` | กัน `/contractor/*`, `/admin/*` ตาม role | ไม่มี session → redirect `/login` · ผิด role → 403 |
-| **API — ผู้ใช้** | `app/api/{auth,records,users,companies}` | รับคำสั่งจากเบราว์เซอร์ · ตรวจสิทธิ์ด้วย cookie | ทุก route ต้องเรียก `getSession()` ก่อนเสมอ |
+| **API — ผู้ใช้** | `app/api/{auth,records,vehicle-requests,users,companies}` | รับคำสั่งจากเบราว์เซอร์ · ตรวจสิทธิ์ด้วย cookie | ทุก route ต้องเรียก `getSession()` ก่อนเสมอ |
 | **API — เครื่องต่อเครื่อง** | `app/api/integration/*` | ให้ RPA เรียก · ตรวจสิทธิ์ด้วย `x-api-key` | แยก namespace ชัดเจน ไม่ปนกับ API ผู้ใช้ |
-| **Domain** | `lib/constants.ts` · `lib/companies.ts` · 🔶 `lib/sync.ts` | `calcMD()`, `gDS` · `ensureCompanyExists()` (auto-add บริษัทใหม่) · 🔶 `groupKey()`, transition rules | business rule ทั้งหมดอยู่ที่นี่ ห้ามอยู่ใน RPA หรือ UI |
+| **Domain** | `lib/constants.ts` · `lib/companies.ts` · `lib/sync.ts` · `lib/vehicle.ts` · `lib/vehicle-validate.ts` | `calcMD()`, `gDS`, span rules, `matchesCompanyFilter()` · `ensureCompanyExists()` · `groupKey()` + claim/report policy · ค่าคงที่จากฟอร์ม EPRO + helper เวลาไทย · `validateVehicleInput()` | business rule ทั้งหมดอยู่ที่นี่ ห้ามอยู่ใน RPA หรือ UI · validation ใช้ไฟล์เดียวกันทั้ง client และ server |
 | **Data** | `lib/db.ts` · `prisma/schema.prisma` | Prisma client singleton | เข้าถึง DB ผ่าน Prisma เท่านั้น |
 
 **หลักที่ยึด:** ผู้รับเหมาและ RPA ไม่เคยตัดสินใจเชิงธุรกิจ — server เป็นคนตัดสินทั้งหมด (คำนวณ man-day, จัดกลุ่มใบงาน, อนุญาต transition)
@@ -103,8 +112,11 @@ Playwright ต้องรันเบราว์เซอร์จริง �
 ```mermaid
 erDiagram
     User ||--o{ Record : "createdBy"
-    Record ||..o{ SyncLog : "recordId (ไม่มี FK)"
+    User ||--o{ VehicleRequest : "createdBy"
+    Record ||..o{ SyncLog : "recordId + kind='record' (ไม่มี FK)"
+    VehicleRequest ||..o{ SyncLog : "recordId + kind='vehicle' (ไม่มี FK)"
     Record ||..o{ Company : "company (ชื่อ string เดียวกัน ไม่มี FK)"
+    VehicleRequest ||..o{ Company : "company (ชื่อ string เดียวกัน ไม่มี FK)"
 
     User {
         string id PK "cuid"
@@ -133,9 +145,29 @@ erDiagram
         string batchKey "🔶 คีย์กลุ่มใบงาน"
         datetime syncedAt "🔶"
     }
+    VehicleRequest {
+        string id PK "cuid"
+        string plant "4911 | 4931 | 4951"
+        string company
+        string driverName "ชื่อพนักงานขับรถ"
+        string plateNumber "เลขทะเบียน (EPRO ช่องเดียว)"
+        string plateProvince "ชื่อสะอาด · RPA ห่อ NBSP ตอนส่ง"
+        string location "สถานที่ปฏิบัติงาน"
+        string reason "EPRO บังคับกรอก"
+        string contactTel "nullable"
+        string startDate "YYYY-MM-DD"
+        string startTime "HH:MM · นาที 00/15/30/45"
+        string endDate "YYYY-MM-DD"
+        string endTime "HH:MM"
+        string createdAt "YYYY-MM-DD"
+        string createdBy FK
+        enum syncStatus "PENDING..CANCELLED (enum เดียวกัน)"
+        string batchKey "= id ของแถวนี้ (ไม่มีการจัดกลุ่ม)"
+    }
     SyncLog {
         string id PK "🔶 audit ห้ามลบ"
-        string recordId
+        string recordId "id ของ Record หรือ VehicleRequest"
+        string kind "'record' (default) | 'vehicle'"
         string fromStatus
         string toStatus
         string actor "admin: | rpa: | system:"
@@ -154,6 +186,11 @@ erDiagram
 **ข้อสังเกตเรื่องชนิดข้อมูล:** วันที่เชิงธุรกิจ (`startDate`, `endDate`, `createdAt`) เก็บเป็น `String` รูปแบบ `YYYY-MM-DD` เพราะเป็นวันที่ล้วนและเรียง/เทียบแบบ string ได้ถูกต้อง ส่วน timestamp ของระบบ sync (🔶 `claimedAt`, `syncedAt`) ใช้ `DateTime` เพราะต้องการความละเอียดระดับวินาทีเพื่อคำนวณ timeout/backoff
 
 **Man-day** คำนวณที่ server ตอนสร้างเท่านั้น (`calcMD()` — นับหัวท้าย, ขั้นต่ำ 1 วัน) แล้วเก็บเป็นค่าคงที่ ไม่คำนวณซ้ำตอนอ่าน เพื่อให้ประวัติย้อนหลังไม่เปลี่ยนตามโค้ด
+
+**`VehicleRequest` เป็นตารางแยก ไม่ใช่ `formType` บน `Record`** — query claim ใน `app/api/integration/claim/route.ts` เลือกแถวโดยไม่มีเงื่อนไขชนิดฟอร์ม ถ้าใบขอรถอยู่ตารางเดียวกันจะถูกหยิบไปกรอกลงฟอร์มคนงานแล้วรายงานสำเร็จ = ทะเบียนรถถูกบันทึกเข้า EPRO ในชื่อพนักงานจริงโดยไม่มีใครรู้ ตารางแยกทำให้บั๊กคลาสนี้เป็นไปไม่ได้ (รายละเอียดใน `sync-state-machine.md` ภาคผนวก 2)
+ไม่มี `manDays`/`accident` เพราะไม่มีความหมายกับรถ และไม่มี ประเภทรถ/เลขบัตรคนขับ/ชื่อโครงการ เพราะ **ฟอร์ม EPRO ไม่มีช่องพวกนั้น** — เก็บเท่าที่ EPRO รับเท่านั้น
+
+**`SyncLog.kind`** ใช้ `String @default("record")` ไม่ใช่ nullable เพราะบน PostgreSQL 11+ `ADD COLUMN NOT NULL DEFAULT` เป็น metadata-only (ไม่ rewrite ตาราง) `where: { kind: 'record' }` อ่านรู้เรื่องกว่า `kind: null` และ Prisma ทำฟิลด์ที่มี default เป็น optional จึง `automation/backfill-apply.mjs` ที่เรียก `syncLog.createMany` ตรงๆ ยังทำงานได้โดยไม่ต้องแก้
 
 ---
 
@@ -220,6 +257,41 @@ sequenceDiagram
 ```
 
 รายละเอียดสถานะทั้ง 7 และ transition table อยู่ใน [`sync-state-machine.md`](./sync-state-machine.md)
+
+### 5.4 ผู้รับเหมาขออนุมัตินำรถเข้าโรงงาน
+
+```mermaid
+sequenceDiagram
+    participant C as ผู้รับเหมา
+    participant GP as Gate Pass
+    participant A as Admin
+    participant R as RPA (รถ)
+    participant E as EPRO FrmOperation.aspx
+
+    C->>GP: /contractor → เมนู → /contractor/vehicle
+    Note over C,GP: 1 คำขอ = 1 คัน (ห้ามมีผู้โดยสาร)<br/>validateVehicleInput() ใช้ตัวเดียวกันทั้ง client และ server
+    C->>GP: POST /api/vehicle-requests (object เดียว) → PENDING
+    A->>GP: PATCH {action:'confirm'} → CONFIRMED
+    R->>GP: POST /vehicle-claim {runId}
+    GP->>GP: reap ค้าง → compare-and-set แถวเดียว → SYNCING
+    GP-->>R: { batchKey: id, vehicle: {...} }
+    R->>R: pre-flight — เวลาเริ่มเหลือ < 1 ชม.?
+    alt เหลือน้อยกว่า 1 ชม.
+        R->>GP: POST /vehicle-report {failed, permanent}
+        Note over GP: ไม่ส่งเข้า EPRO เลย — EPRO ปฏิเสธแน่<br/>และ retry ยิ่งแย่เพราะเวลาเดินหน้า
+    else เวลาพอ
+        R->>E: กรอกฟอร์ม (จังหวัดห่อ NBSP · วันที่ ค.ศ.)
+        R->>E: click Save
+        alt มี dialog เด้ง
+            Note over R: validation ไม่ผ่าน = EPRO ไม่ได้บันทึก<br/>ห้ามรายงาน ok
+            R->>GP: POST /vehicle-report {unknown} → NEEDS_REVIEW
+        else ไม่มี dialog
+            R->>GP: POST /vehicle-report {ok} → SYNCED
+        end
+    end
+```
+
+ต่างจาก 5.3 สามข้อ: **ไม่มีการจัดกลุ่ม** (`batchKey` = id ของแถว) · **pre-flight กฎ 1 ชั่วโมง** ก่อนกรอก · **ดัก dialog หลัง Save** เพราะถ้าไม่ดัก alert เตือน validation จะถูกกด OK แล้วรายงาน `ok` ทำให้แถวกลายเป็น `SYNCED` ทั้งที่ EPRO ว่าง
 
 ---
 
@@ -314,6 +386,11 @@ graph LR
 | RPA มีเครื่องเดียว ไม่มี failover | เครื่องดับ = sync หยุด (ข้อมูลไม่หาย) | สถาปัตยกรรม claim/report รองรับ worker หลายตัวอยู่แล้ว — เพิ่มเครื่องได้ทันทีโดยไม่แก้โค้ด |
 | ไม่มี message queue | ไม่จำเป็นที่ scale ปัจจุบัน (โรงงานเดียว · หลักสิบรายการ) | polling API + state machine ย้ายไปเป็น queue consumer ได้โดยไม่แตะ business logic |
 | ไม่มี rate limit ที่ login | เสี่ยง brute force | เพิ่ม throttle ต่อ IP/credential |
+| **ระบบไม่รู้ผลอนุมัติจาก EPRO** | `SYNCED` = "ส่งเข้า EPRO แล้ว" ไม่ใช่ "อนุมัติแล้ว" ผู้รับเหมาจึงยังต้องถามเจ้าหน้าที่เอง | EPRO ไม่มี API ให้อ่านผลกลับ → ต้อง scrape หน้ารายการเพิ่ม หรือรอ vendor · **ห้ามเขียน UI ที่ทำให้ผู้ใช้เข้าใจว่าเห็นผลอนุมัติ** |
+| **กฎ 1 ชม.ของฟอร์มรถวัดตอน RPA กด Save** | ใบที่ผู้รับเหมาขอชิดขั้นต่ำจะถูก EPRO ปฏิเสธถ้า admin ยืนยันช้า | กันไว้ 3 ชั้น (pre-flight · ดัก dialog · แถบเตือนใบใกล้หมดเวลา) แต่แก้ที่ต้นเหตุไม่ได้ถ้าไม่เพิ่ม buffer ในฟอร์ม |
+| login EPRO 2 ครั้งต่อรอบ cron (สคริปต์แยกไฟล์) | ยังไม่พบปัญหา แต่ไม่ทราบนโยบาย lockout ของ EPRO | รวมสองสคริปต์ให้แชร์ browser context เดียว |
+| reap เกิดตอน claim เท่านั้น | ถ้าสคริปต์ฝั่งไหนหยุด แถว `SYNCING` ของฝั่งนั้นจะไม่ถูก reap | แยก reaper เป็น cron ของตัวเอง |
+| `_prisma_migrations` ของ Neon `dev` มีแถวค้าง `finished_at=NULL` | `prisma migrate dev` เรียกร้องให้ reset ฐาน (= ข้อมูลหาย) | ใช้ `migrate deploy` เท่านั้น (Vercel ก็ใช้ตัวนี้) · จะเคลียร์ด้วย `migrate resolve --rolled-back` ก็ได้แต่ยังไม่จำเป็น |
 
 ---
 
@@ -329,3 +406,9 @@ graph LR
 | 6 | เก็บ sync state per-record แต่เปลี่ยนทั้งกลุ่มพร้อมกัน | EPRO รับเป็นใบงาน (หลายคน/ใบ) แต่ธุรกิจนับเป็นรายคน | สร้าง entity `SyncBatch` — ถูกกว่าเชิงทฤษฎีแต่งานเยอะเกินคุ้ม |
 | 7 | Inline style จาก `gDS` ไม่ใช้ Tailwind | ต้องตรงกับ prototype จาก Claude Design แบบ pixel-for-pixel | Tailwind |
 | 8 | Export Excel ฝั่ง client (`xlsx`) | ไม่ต้องมี endpoint สร้างไฟล์ · ข้อมูลอยู่ในเบราว์เซอร์อยู่แล้ว | สร้างไฟล์ที่ server |
+| 9 | `VehicleRequest` เป็นตารางแยก ไม่ใช่ `formType` บน `Record` | query claim เดิมไม่มีเงื่อนไขชนิดฟอร์ม — ถ้าอยู่ตารางเดียวกัน ใบขอรถจะถูกกรอกลงฟอร์มคนงานแล้วรายงานสำเร็จ (ทะเบียนรถเข้า EPRO ในชื่อพนักงานจริง ไม่มีใครรู้) ตารางแยกทำให้บั๊กคลาสนี้เป็นไปไม่ได้ | `formType` + filter ทุก query — ต้องจำให้ครบตลอดไป |
+| 10 | endpoint คู่ใหม่ (`vehicle-claim`/`vehicle-report`) ไม่แก้ของเดิม | RPA deploy แยกจาก Vercel · ถ้าแก้ route เดิม ผลของ version skew คือ 200 ที่แนบ payload ผิดแบบเงียบ · แยก endpoint ทำให้ผลที่แย่ที่สุดเป็น 404 ที่ grep เจอ | เพิ่ม `formType` เข้า `/claim` เดิม |
+| 11 | สคริปต์ RPA แยกไฟล์ แต่ cron entry เดียว `flock` เดียว | `epro-sync.mjs` เหมือนเดิมทุก byte เส้นทาง production พังจากงานนี้ไม่ได้ · lock เดียวกันกัน session EPRO ชนกัน | รวมไฟล์ (exception ฝั่งรถล้ม run คนงาน) · เพิ่ม cron entry (session ชน หรือรถถูก skip เงียบ) |
+| 12 | เก็บชื่อจังหวัดสะอาดใน DB แล้วให้ RPA ห่อ NBSP ตอนส่ง | value ของ `ddlProvience` ห่อด้วย U+00A0 ทั้ง 77 ตัว — เก็บ NBSP ลง DB จะทำให้ข้อมูลสกปรกและ export/filter เพี้ยน | เก็บค่าดิบตาม EPRO · เก็บตาราง map แยก (drift ได้) |
+| 13 | แยกประเภท error ด้วย "กด Save ไปแล้วหรือยัง" ไม่ใช่ regex บนข้อความ | regex เดิมจัดข้อความไทยเป็น retryable ทั้งที่พังก่อน submit (เสียแรงคนเปล่า) และเสี่ยงจัด failure หลัง submit เป็น `failed` ที่ retry ได้ = ส่งซ้ำ | คง regex เดิม |
+| 14 | dry-run อ่านค่ากลับจากฟอร์มมาแสดง ไม่ใช่รอคนเพ่งหน้าจอ | สองความล้มเหลวที่แพงสุดของฟอร์มนี้เงียบทั้งคู่ (พ.ศ. vs ค.ศ. · dropdown เลือกไม่ติด) มองด้วยตาไม่เห็น | รอ 90 วินาทีให้คนตรวจ |
