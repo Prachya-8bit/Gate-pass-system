@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
 import { requireApiKey } from '@/lib/integration-auth';
-import { groupKey, MAX_ATTEMPTS, RETRY_BACKOFF_MS, CLAIM_TIMEOUT_MS, logTransition } from '@/lib/sync';
+import { groupKey, logTransition, claimCutoffs, claimableWhere, claimData } from '@/lib/sync';
 
 interface ClaimBody {
   runId?: string;
@@ -23,9 +23,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'ต้องระบุ runId' }, { status: 400 });
   }
 
-  const now = new Date();
-  const claimTimeoutCutoff = new Date(now.getTime() - CLAIM_TIMEOUT_MS);
-  const retryBackoffCutoff = new Date(now.getTime() - RETRY_BACKOFF_MS);
+  const { now, claimTimeoutCutoff, retryBackoffCutoff } = claimCutoffs();
 
   // Explicit type: the transaction either claims a group or returns null.
   let result: {
@@ -58,16 +56,7 @@ export async function POST(request: NextRequest) {
 
         // Find claimable records: confirmed, or failed-but-retryable
         const claimable = await tx.record.findMany({
-          where: {
-            OR: [
-              { syncStatus: 'CONFIRMED' },
-              {
-                syncStatus: 'FAILED',
-                syncAttempt: { lt: MAX_ATTEMPTS },
-                lastSyncAt: { lt: retryBackoffCutoff },
-              },
-            ],
-          },
+          where: claimableWhere(retryBackoffCutoff),
           select: { id: true, company: true, startDate: true, endDate: true, zone: true, createdAt: true },
           orderBy: { createdAt: 'asc' },
         });
@@ -83,14 +72,7 @@ export async function POST(request: NextRequest) {
         // Compare-and-set: only succeeds if no one else claimed these first
         const claimed = await tx.record.updateMany({
           where: { id: { in: ids }, syncStatus: { in: ['CONFIRMED', 'FAILED'] } },
-          data: {
-            syncStatus: 'SYNCING',
-            claimedAt: now,
-            claimedBy: runId,
-            batchKey: key,
-            lastSyncAt: now,
-            syncAttempt: { increment: 1 },
-          },
+          data: claimData(runId, key, now),
         });
 
         if (claimed.count !== ids.length) return null;

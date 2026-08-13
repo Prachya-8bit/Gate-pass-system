@@ -1,14 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
 import { requireApiKey } from '@/lib/integration-auth';
-import { MAX_ATTEMPTS, logTransition } from '@/lib/sync';
+import { logTransition, reportOutcome, type ReportResult, type ErrorClass } from '@/lib/sync';
 
 interface ReportBody {
   runId?: string;
   batchKey?: string;
-  result?: 'ok' | 'failed' | 'unknown';
+  result?: ReportResult;
   error?: string;
-  errorClass?: 'retryable' | 'permanent' | null;
+  errorClass?: ErrorClass;
 }
 
 export async function POST(request: NextRequest) {
@@ -31,37 +31,21 @@ export async function POST(request: NextRequest) {
   // A report from a stale/superseded run silently matches nothing — not an error.
   const guard = { batchKey, claimedBy: runId, syncStatus: 'SYNCING' as const };
 
+  const outcome = reportOutcome(result, errorClass, error);
+
   await prisma.$transaction(async (tx) => {
     const matching = await tx.record.findMany({ where: guard, select: { id: true } });
     if (matching.length === 0) return;
     const ids = matching.map((r) => r.id);
-    const actor = `rpa:${runId}`;
 
-    if (result === 'ok') {
-      await tx.record.updateMany({
-        where: guard,
-        data: { syncStatus: 'SYNCED', syncedAt: new Date() },
-      });
-      await logTransition(tx, { recordIds: ids, to: 'SYNCED', from: 'SYNCING', actor });
-    } else if (result === 'failed' && errorClass === 'permanent') {
-      await tx.record.updateMany({
-        where: guard,
-        data: { syncStatus: 'FAILED', lastSyncError: error ?? null, syncAttempt: MAX_ATTEMPTS },
-      });
-      await logTransition(tx, { recordIds: ids, to: 'FAILED', from: 'SYNCING', actor, error });
-    } else if (result === 'failed') {
-      await tx.record.updateMany({
-        where: guard,
-        data: { syncStatus: 'FAILED', lastSyncError: error ?? null },
-      });
-      await logTransition(tx, { recordIds: ids, to: 'FAILED', from: 'SYNCING', actor, error });
-    } else {
-      await tx.record.updateMany({
-        where: guard,
-        data: { syncStatus: 'NEEDS_REVIEW' },
-      });
-      await logTransition(tx, { recordIds: ids, to: 'NEEDS_REVIEW', from: 'SYNCING', actor });
-    }
+    await tx.record.updateMany({ where: guard, data: outcome.data });
+    await logTransition(tx, {
+      recordIds: ids,
+      to: outcome.to,
+      from: 'SYNCING',
+      actor: `rpa:${runId}`,
+      error: outcome.error,
+    });
   });
 
   return NextResponse.json({ acknowledged: true });
