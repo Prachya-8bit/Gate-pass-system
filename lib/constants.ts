@@ -46,3 +46,20 @@ export function calcMD(startDate: string, endDate: string): number {
     Math.ceil((new Date(endDate).getTime() - new Date(startDate).getTime()) / 86400000) + 1,
   );
 }
+
+// ตรรกะตัวกรองบริษัทบนหน้า admin — ใช้ร่วมกันระหว่างตารางลงทะเบียนแรงงานและ
+// ตารางคำขอนำรถ ถ้าแยกกันแล้ว drift การ์ดรถจะขัดกับตัวกรองที่ admin เลือกแบบเงียบๆ
+// อยู่ที่ไฟล์นี้ไม่ใช่ lib/companies.ts เพราะไฟล์นั้น import @/lib/db
+// (จะลาก Prisma เข้า browser bundle)
+export function matchesCompanyFilter(
+  name: string,
+  companyFilter: string,
+  customCompany: string,
+): boolean {
+  if (companyFilter === 'ทั้งหมด') return true;
+  if (companyFilter === 'อื่นๆ') {
+    const q = customCompany.trim().toLowerCase();
+    return !q || name.toLowerCase().includes(q);
+  }
+  return name === companyFilter;
+}

@@ -2,7 +2,7 @@
 
 import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import * as XLSX from 'xlsx';
-import { gDS } from '@/lib/constants';
+import { gDS, matchesCompanyFilter } from '@/lib/constants';
 import { Btn, GCard, Badge, InpBox, SelBox, TopBar } from '@/components/atoms';
 import { SYNC_LABELS } from '@/lib/sync';
 import ManagerSummary from '@/components/ManagerSummary';
@@ -281,15 +281,10 @@ export default function AdminFlow({
     }
   }
 
-  const filtered = useMemo(() => {
-    if (companyFilter === 'ทั้งหมด') return records;
-    if (companyFilter === 'อื่นๆ') {
-      const q = customCompany.trim().toLowerCase();
-      if (!q) return records;
-      return records.filter((r) => r.company.toLowerCase().includes(q));
-    }
-    return records.filter((r) => r.company === companyFilter);
-  }, [records, companyFilter, customCompany]);
+  const filtered = useMemo(
+    () => records.filter((r) => matchesCompanyFilter(r.company, companyFilter, customCompany)),
+    [records, companyFilter, customCompany],
+  );
 
   // จำกัดความสูงกล่องตารางให้พอดี 20 แถวแรก (แถวสูงไม่เท่ากันเพราะบางแถวมีปุ่ม) — เกินกว่านั้นเลื่อนดู
   const recordsBoxRef = useRef<HTMLDivElement>(null);
