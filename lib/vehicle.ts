@@ -87,8 +87,8 @@ export const VEHICLE_LEAD_MINUTES = 60;
  */
 export const VEHICLE_RISKY_LEAD_MINUTES = 120;
 
-/** ช่วงวันที่สูงสุดต่อคำขอ — ⚠️ ยังไม่ได้ยืนยันกับ validation ของ EPRO */
-export const VEHICLE_MAX_SPAN_DAYS = 30;
+// ช่วงวันที่ใช้ MIN_SPAN_DAYS / MAX_SPAN_DAYS ตัวเดียวกับฟอร์มลงทะเบียนแรงงาน
+// (span 1–6 วัน = calcMD 2–7 วัน ห้ามวันเดียวกัน) จึงไม่มีค่าคงที่ของตัวเองที่นี่
 
 /** เวลาไทยเป็น UTC+7 ตายตัว (ไม่มี DST) — server บน Vercel รันเป็น UTC */
 const THAI_UTC_OFFSET_MS = 7 * 60 * 60 * 1000;

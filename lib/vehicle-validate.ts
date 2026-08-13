@@ -10,11 +10,10 @@ import {
   TIME_HOURS,
   TIME_MINUTES,
   VEHICLE_LEAD_MINUTES,
-  VEHICLE_MAX_SPAN_DAYS,
   minutesUntil,
   thaiDateTime,
 } from '@/lib/vehicle';
-import { spanDays } from '@/lib/constants';
+import { MAX_SPAN_DAYS, MIN_SPAN_DAYS, spanDays } from '@/lib/constants';
 
 export interface VehicleInput {
   plant?: string;
@@ -93,11 +92,17 @@ export function validateVehicleInput(b: VehicleInput, now: Date = new Date()): s
   const start = thaiDateTime(b.startDate, b.startTime);
   const end = thaiDateTime(b.endDate, b.endTime);
   if (!start || !end) return 'กรุณาระบุวันและเวลาให้ถูกต้อง';
-  if (end.getTime() <= start.getTime()) return 'เวลาสิ้นสุดต้องอยู่หลังเวลาเริ่ม';
 
+  // ช่วงวันที่ใช้กฎเดียวกับฟอร์มลงทะเบียนแรงงาน: span 1–6 วัน (calcMD 2–7 วัน)
+  // ห้ามวันเดียวกัน — ข้อความ error ใช้คำเดียวกับ app/api/records/route.ts
   const span = spanDays(b.startDate, b.endDate);
-  if (span > VEHICLE_MAX_SPAN_DAYS)
-    return `ช่วงวันที่ต้องไม่เกิน ${VEHICLE_MAX_SPAN_DAYS} วันนับจากวันที่เริ่ม`;
+  if (span < MIN_SPAN_DAYS)
+    return `วันที่สิ้นสุดต้องอยู่หลังวันที่เริ่มอย่างน้อย ${MIN_SPAN_DAYS} วัน`;
+  if (span > MAX_SPAN_DAYS)
+    return `ช่วงวันที่ต้องไม่เกิน ${MAX_SPAN_DAYS} วันนับจากวันที่เริ่ม`;
+
+  // กันเหนียว — ด้วย span >= 1 วัน เคสนี้เกิดไม่ได้ แต่ validate ต้องทนกับ input ใดๆ
+  if (end.getTime() <= start.getTime()) return 'เวลาสิ้นสุดต้องอยู่หลังเวลาเริ่ม';
 
   // กฎ EPRO — วัดตอนกดบันทึกใน EPRO จริง แต่กันไว้ตั้งแต่ตอนกรอกด้วย
   const lead = minutesUntil(b.startDate, b.startTime, now);
