@@ -220,6 +220,39 @@ export function SelBox({
   );
 }
 
+// textarea — ใช้กับช่องที่ EPRO เป็น textarea เช่น "เหตุผลที่ต้องใช้รถ"
+// แยกเป็น component ใหม่ ไม่สอน InpBox ให้ render textarea แบบมีเงื่อนไข
+// เพราะ InpBox เป็น atom ที่ใช้มากสุดในแอป ไม่คุ้มเสี่ยง
+export function TxtBox({
+  label,
+  value,
+  onChange,
+  placeholder,
+  error,
+  rows = 3,
+}: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  placeholder?: string;
+  error?: string;
+  rows?: number;
+}) {
+  return (
+    <div style={{ marginBottom: 14 }}>
+      <label style={labelStyle}>{label}</label>
+      <textarea
+        value={value}
+        placeholder={placeholder}
+        rows={rows}
+        onChange={(e) => onChange(e.target.value)}
+        style={{ ...fieldStyle(error), minHeight: 88, resize: 'vertical' }}
+      />
+      <FieldError error={error} />
+    </div>
+  );
+}
+
 export function Combobox({
   label,
   value,
