@@ -146,6 +146,13 @@ const fieldStyle = (error?: string): React.CSSProperties => ({
   boxSizing: 'border-box',
 });
 
+function FieldError({ error }: { error?: string }) {
+  if (!error) return null;
+  return (
+    <div style={{ color: gDS.err, fontSize: 12, marginTop: 4, fontFamily: gDS.font }}>{error}</div>
+  );
+}
+
 export function InpBox({
   label,
   value,
@@ -153,6 +160,7 @@ export function InpBox({
   type = 'text',
   placeholder,
   error,
+  inputMode,
 }: {
   label: string;
   value: string;
@@ -160,6 +168,8 @@ export function InpBox({
   type?: string;
   placeholder?: string;
   error?: string;
+  // ช่วยให้มือถือขึ้นแป้นตัวเลขตอนกรอกเลขบัตร/เบอร์โทร — ไม่ส่งมาก็ได้แป้นปกติ
+  inputMode?: React.InputHTMLAttributes<HTMLInputElement>['inputMode'];
 }) {
   return (
     <div style={{ marginBottom: 14 }}>
@@ -168,14 +178,11 @@ export function InpBox({
         type={type}
         value={value}
         placeholder={placeholder}
+        inputMode={inputMode}
         onChange={(e) => onChange(e.target.value)}
         style={fieldStyle(error)}
       />
-      {error && (
-        <div style={{ color: gDS.err, fontSize: 12, marginTop: 4, fontFamily: gDS.font }}>
-          {error}
-        </div>
-      )}
+      <FieldError error={error} />
     </div>
   );
 }
@@ -185,22 +192,30 @@ export function SelBox({
   value,
   onChange,
   options,
+  placeholder,
+  error,
 }: {
   label: string;
   value: string;
   onChange: (v: string) => void;
   options: string[];
+  // ถ้าไม่ส่ง placeholder จะไม่มี option ว่าง — select จะโชว์ options[0] เหมือนผู้ใช้เลือกเอง
+  // ส่ง placeholder เมื่อต้องบังคับให้ผู้ใช้เลือกเอง แล้วเช็ค value === '' ตอน validate
+  placeholder?: string;
+  error?: string;
 }) {
   return (
     <div style={{ marginBottom: 14 }}>
       <label style={labelStyle}>{label}</label>
-      <select value={value} onChange={(e) => onChange(e.target.value)} style={fieldStyle()}>
+      <select value={value} onChange={(e) => onChange(e.target.value)} style={fieldStyle(error)}>
+        {placeholder && <option value="">{placeholder}</option>}
         {options.map((o) => (
           <option key={o} value={o}>
             {o}
           </option>
         ))}
       </select>
+      <FieldError error={error} />
     </div>
   );
 }
@@ -298,11 +313,7 @@ export function Combobox({
           จะบันทึกเป็นบริษัทใหม่
         </div>
       )}
-      {error && (
-        <div style={{ color: gDS.err, fontSize: 12, marginTop: 4, fontFamily: gDS.font }}>
-          {error}
-        </div>
-      )}
+      <FieldError error={error} />
     </div>
   );
 }
@@ -313,12 +324,14 @@ export function DatePick({
   onChange,
   min,
   max,
+  error,
 }: {
   label: string;
   value: string;
   onChange: (v: string) => void;
   min?: string;
   max?: string;
+  error?: string;
 }) {
   return (
     <div style={{ marginBottom: 14 }}>
@@ -329,8 +342,9 @@ export function DatePick({
         onChange={(e) => onChange(e.target.value)}
         min={min}
         max={max}
-        style={fieldStyle()}
+        style={fieldStyle(error)}
       />
+      <FieldError error={error} />
     </div>
   );
 }
