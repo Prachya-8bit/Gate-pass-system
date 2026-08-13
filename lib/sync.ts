@@ -105,21 +105,28 @@ export const SYNC_LABELS: Record<string, string> = {
   CANCELLED: 'ยกเลิก',
 };
 
+/** ตารางที่ SyncLog.recordId อ้างถึง — 'record' = ลงทะเบียนแรงงาน, 'vehicle' = คำขอนำรถเข้า */
+export type SyncLogKind = 'record' | 'vehicle';
+
 export async function logTransition(
   tx: Parameters<Parameters<typeof prisma.$transaction>[0]>[0],
   params: {
+    // ชื่อ recordIds คงไว้ตามเดิมทั้งที่ตอนนี้รับ id ของ VehicleRequest ได้ด้วย —
+    // เปลี่ยนชื่อต้องแตะ call site ที่ทำงานอยู่ 7 จุดเพื่อความสวยเท่านั้น
     recordIds: string[];
     to: string;
     from?: string | null;
     actor: string;
     machine?: string | null;
     error?: string | null;
+    kind?: SyncLogKind;
   },
 ) {
   // Use createMany for efficiency — the plan explicitly says syncLog.createMany
   await tx.syncLog.createMany({
     data: params.recordIds.map((recordId) => ({
       recordId,
+      kind: params.kind ?? 'record',
       fromStatus: params.from ?? null,
       toStatus: params.to,
       actor: params.actor,

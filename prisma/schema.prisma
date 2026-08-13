@@ -22,28 +22,29 @@ enum SyncStatus {
 
 model User {
   id          String   @id @default(cuid())
-  credential  String   @unique  // phone number or email
-  password    String            // bcrypt hash — never store plaintext
-  role        String   @default("contractor")  // "contractor" | "admin"
-  contactName String?           // ชื่อผู้ใช้งานจริง เพื่อให้ admin รู้ว่าบัญชีนี้ของใคร
+  credential  String   @unique // phone number or email
+  password    String // bcrypt hash — never store plaintext
+  role        String   @default("contractor") // "contractor" | "admin"
+  contactName String? // ชื่อผู้ใช้งานจริง เพื่อให้ admin รู้ว่าบัญชีนี้ของใคร
   createdAt   DateTime @default(now())
 
-  records Record[]
+  records         Record[]
+  vehicleRequests VehicleRequest[]
 }
 
 model Record {
   id        String  @id @default(cuid())
-  name      String           // worker full name (Thai)
-  idCard    String           // 13-digit Thai national ID, digits only
+  name      String // worker full name (Thai)
+  idCard    String // 13-digit Thai national ID, digits only
   company   String
-  job       String?          // job title / position
-  zone      String?          // work zone e.g. "Zone A", "อาคาร 2"
-  startDate String           // ISO date string YYYY-MM-DD
-  endDate   String           // ISO date string YYYY-MM-DD
-  manDays   Int              // inclusive day count (calcMD result)
-  accident  Boolean @default(false)  // admin toggles this after the fact
-  createdAt String           // ISO date string YYYY-MM-DD (submission date)
-  createdBy String           // User.id of submitting contractor
+  job       String? // job title / position
+  zone      String? // work zone e.g. "Zone A", "อาคาร 2"
+  startDate String // ISO date string YYYY-MM-DD
+  endDate   String // ISO date string YYYY-MM-DD
+  manDays   Int // inclusive day count (calcMD result)
+  accident  Boolean @default(false) // admin toggles this after the fact
+  createdAt String // ISO date string YYYY-MM-DD (submission date)
+  createdBy String // User.id of submitting contractor
 
   syncStatus    SyncStatus @default(PENDING)
   syncAttempt   Int        @default(0)
@@ -57,9 +58,59 @@ model Record {
   confirmedBy   String?
   updatedAt     DateTime   @default(now()) @updatedAt
 
+  author User @relation(fields: [createdBy], references: [id])
+
   @@index([syncStatus])
+}
+
+// ขออนุมัตินำรถยนต์เข้ามาปฏิบัติงานภายในโรงงาน
+//
+// แยกตารางจาก Record โดยเจตนา ไม่ใช้ formType บน Record เพราะ query ใน
+// app/api/integration/claim/route.ts เลือกแถวโดยไม่มีเงื่อนไขชนิดฟอร์ม — ถ้าใบขอรถ
+// ไปอยู่ในตารางเดียวกัน query นั้นจะหยิบไปกรอกลงฟอร์มคนงาน แล้วรายงานสำเร็จ
+// กลายเป็นทะเบียนรถถูกบันทึกเข้า EPRO ในชื่อพนักงานจริงโดยไม่มีใครรู้
+//
+// ฟิลด์สะท้อนฟอร์ม EPRO reg/FrmOperation.aspx แบบ 1:1 (ดู automation/selectors.mjs)
+// ไม่มี ประเภทรถ / เลขบัตรคนขับ / ชื่อโครงการ เพราะฟอร์ม EPRO ไม่มีช่องพวกนั้น
+model VehicleRequest {
+  id String @id @default(cuid())
+
+  plant         String // ddlPlant: "4911" SYS-MTP | "4931" SYS-HP | "4951" SYS-BDC
+  company       String // txtRTM_VST_SUPPNAME — ชื่อบริษัท/หน่วยงาน
+  driverName    String // txtRTM_VST_DRIVERNAME — ชื่อพนักงานขับรถ
+  plateNumber   String // txtRTM_VST_CARNO — เลขทะเบียน (EPRO เป็นช่องเดียว)
+  plateProvince String // ddlProvience — เก็บชื่อสะอาด RPA ห่อ NBSP กลับตอน submit
+  location      String // txtRTM_VST_LOCATION — สถานที่ปฏิบัติงาน
+  reason        String // txtRTM_VST_RESON — เหตุผลที่ต้องใช้รถ (EPRO บังคับกรอก)
+  contactTel    String? // txtRTM_VST_REQTEL — ว่างได้ RPA จะใช้ EPRO_REQ_TEL แทน
+
+  // วัน/เวลาแยกกันตามฟอร์ม EPRO (date textbox + dropdown ชั่วโมง/นาที)
+  // เก็บเป็น String ตามขนบของโปรเจกต์: วันที่เชิงธุรกิจเป็น String เทียบ/เรียงได้ถูก
+  startDate String // YYYY-MM-DD
+  startTime String // HH:MM — นาทีจำกัดเป็น 00/15/30/45 (EPRO ขาดค่า 10)
+  endDate   String // YYYY-MM-DD
+  endTime   String // HH:MM
+
+  createdAt String // YYYY-MM-DD (วันที่ยื่น)
+  createdBy String // User.id ของผู้รับเหมาที่ยื่น
+
+  // sync block — ชื่อและชนิดต้องตรงกับ Record เป๊ะ เพื่อให้ helper ใน lib/sync.ts
+  // (claimableWhere / claimData / reportOutcome) ใช้กับทั้งสองตารางได้โดยไม่ต้อง cast
+  syncStatus    SyncStatus @default(PENDING)
+  syncAttempt   Int        @default(0)
+  lastSyncError String?
+  lastSyncAt    DateTime?
+  syncedAt      DateTime?
+  claimedAt     DateTime?
+  claimedBy     String?
+  batchKey      String?
+  confirmedAt   DateTime?
+  confirmedBy   String?
+  updatedAt     DateTime   @default(now()) @updatedAt
 
   author User @relation(fields: [createdBy], references: [id])
+
+  @@index([syncStatus])
 }
 
 model Company {
@@ -71,6 +122,10 @@ model Company {
 model SyncLog {
   id         String   @id @default(cuid())
   recordId   String
+  // recordId ไม่มี FK อยู่แล้ว (ตั้งใจ ให้ audit อยู่รอดแม้ record ถูกลบ) จึงเก็บ id
+  // ของตารางไหนก็ได้ — kind บอกว่ามาจากตารางไหน default 'record' ทำให้แถวเก่า
+  // ทั้งหมดถูก backfill ถูกต้อง และ caller เดิมไม่ต้องแก้
+  kind       String   @default("record") // 'record' | 'vehicle'
   fromStatus String?
   toStatus   String
   actor      String
