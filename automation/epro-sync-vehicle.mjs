@@ -165,6 +165,11 @@ try {
 
       const h = vehicleForm.header;
       const v = vehicleForm.vehicle;
+
+      // หมายเหตุ: การ fill ช่องวันที่ทำให้ปฏิทินของ epro เปิดค้างไว้และปิดไม่ลง
+      // (ลองแล้วทั้ง blur, Escape, คลิกพื้นที่ว่าง — ไม่ปิด) แต่เป็นเรื่องหน้าตาเท่านั้น:
+      // ค่าใน input ถูกต้อง (dry-run อ่านกลับมายืนยันทุกรอบ) และปฏิทินอยู่เหนือปุ่ม Save
+      // ไม่ทับ — dry-run มีการตรวจว่าปุ่ม Save ไม่ถูกอะไรทับก่อนจบด้วย
       await page.selectOption(h.plantSelect, vehicle.plant);
       await page.fill(h.startDate, toDMY(vehicle.startDate));
       const [sh, sm] = vehicle.startTime.split(':');
@@ -190,10 +195,82 @@ try {
       await page.selectOption(h.approverSelect, EPRO_APPROVER);
 
       if (dryRun) {
-        console.log('\n[dry-run] กรอกคำขอนำรถเข้าครบแล้ว แต่ไม่กดบันทึก — ตรวจหน้าจอได้เลย');
-        console.log('[dry-run] ตรวจให้ครบ: รูปแบบวันที่ (ค.ศ.), dropdown จังหวัด/นาที/ผู้อนุมัติ');
-        console.log('[dry-run] ค้างหน้านี้ไว้ 90 วินาที แล้วปิดเอง');
-        await page.waitForTimeout(90_000);
+        // อ่านค่ากลับจากฟอร์มจริง ดีกว่าให้คนเพ่งหน้าจอ — dropdown ที่เลือกไม่ติด
+        // จะโชว์เป็นค่าว่างให้เห็นชัด (เช่น จังหวัดที่ห่อ NBSP ผิด หรือนาทีที่ epro ไม่มี)
+        const val = (sel) => page.inputValue(sel).catch(() => '<อ่านไม่ได้>');
+        const picked = (sel) =>
+          page
+            .locator(`${sel} option:checked`)
+            .first()
+            .innerText()
+            .then((t) => t.trim())
+            .catch(() => '<ไม่มีอะไรถูกเลือก>');
+
+        const readback = {
+          'โรงงาน (ddlPlant)': await picked(h.plantSelect),
+          'วันที่เริ่ม': await val(h.startDate),
+          'เวลาเริ่ม ชม.': await picked(h.startHour),
+          'เวลาเริ่ม นาที': await picked(h.startMin),
+          'วันที่สิ้นสุด': await val(h.endDate),
+          'เวลาสิ้นสุด ชม.': await picked(h.endHour),
+          'เวลาสิ้นสุด นาที': await picked(h.endMin),
+          'ชื่อบริษัท': await val(h.company),
+          'ชื่อพนักงานขับรถ': await val(v.driverName),
+          'เลขทะเบียน': await val(v.plateNumber),
+          'จังหวัด (ddlProvience)': await picked(v.provinceSelect),
+          'สถานที่ปฏิบัติงาน': await val(v.location),
+          'เหตุผล': await val(v.reason),
+          'เบอร์ติดต่อ': await val(v.requesterTel),
+          'ผู้อนุมัติ (ddlSM)': await picked(h.approverSelect),
+        };
+
+        console.log('\n[dry-run] ค่าที่อ่านกลับจากฟอร์ม epro จริง:');
+        const width = Math.max(...Object.keys(readback).map((k) => k.length));
+        const blanks = [];
+        for (const [k, valRead] of Object.entries(readback)) {
+          const shown = valRead === '' ? '<ว่าง>' : valRead;
+          if (valRead === '' || valRead.startsWith('<')) blanks.push(k);
+          console.log(`  ${k.padEnd(width)}  ${shown}`);
+        }
+
+        // เตือนเรื่องปีแบบอ่านออก — พ.ศ. จะไม่ error แต่ข้อมูลผิด 543 ปี
+        const year = (readback['วันที่เริ่ม'] || '').split('/')[2];
+        const expectYear = vehicle.startDate.slice(0, 4);
+        console.log(
+          `\n  ปีในช่องวันที่ = ${year || '?'} (คาดว่าเป็น ค.ศ. ${expectYear}) → ` +
+            (year === expectYear ? 'ค.ศ. ถูกต้อง' : '⚠️ ไม่ตรง! ตรวจว่า epro ใช้ พ.ศ. หรือไม่'),
+        );
+        if (blanks.length > 0) {
+          console.log(`\n  ⚠️ ช่องที่ยังว่าง/อ่านไม่ได้: ${blanks.join(', ')}`);
+        } else {
+          console.log('\n  ✅ ทุกช่องมีค่าครบ ไม่มี dropdown ที่เลือกไม่ติด');
+        }
+
+        // ปฏิทินของ epro เปิดค้างหลังกรอกวันที่ — ตรวจว่ามันไม่ทับปุ่ม Save
+        // ถ้าทับ การกด submit ตอนรันจริงจะพลาดหรือไปโดน element อื่น
+        const saveClickable = await page
+          .locator(vehicleForm.submitButton)
+          .evaluate((el) => {
+            const r = el.getBoundingClientRect();
+            if (r.width === 0 || r.height === 0) return 'ปุ่มไม่มีขนาด (ซ่อนอยู่?)';
+            const top = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+            return top === el || el.contains(top) ? 'ok' : `ถูกทับด้วย <${top?.tagName ?? '?'}>`;
+          })
+          .catch((e) => `ตรวจไม่ได้: ${e.message}`);
+        console.log(
+          `  ปุ่ม Save: ${saveClickable === 'ok' ? '✅ กดได้ ไม่มีอะไรทับ' : `⚠️ ${saveClickable}`}`,
+        );
+
+        mkdirSync(screenshotDir, { recursive: true });
+        const shot = join(screenshotDir, `vehicle-dryrun-${Date.now()}.png`);
+        await page.screenshot({ path: shot, fullPage: true }).catch(() => {});
+        console.log(`\n[dry-run] ภาพหน้าจอ: ${shot}`);
+        console.log('[dry-run] ไม่กดบันทึก — คำขอยังคงสถานะ "กำลังส่ง" ต้องกด "ยังไม่ส่ง" หรือ');
+        console.log('[dry-run] รอ reaper 30 นาที เพื่อให้กลับมาส่งได้อีก');
+        if (!HEADLESS) {
+          console.log('[dry-run] ค้างหน้านี้ไว้ 90 วินาที แล้วปิดเอง');
+          await page.waitForTimeout(90_000);
+        }
         break;
       }
 
