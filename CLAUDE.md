@@ -215,6 +215,13 @@ Demo records were removed (2026-07-15) — records now come from real form submi
 - Seed admin ครั้งแรก: รันจากเครื่อง dev — `DATABASE_URL=<Neon direct> SEED_ADMIN_PASSWORD=<รหัสจริง> npx prisma db seed`
 - Neon มี 2 branches: หลัก (production) + `dev` (เครื่องพัฒนาใช้ผ่าน `.env.local`)
 
+⚠️ **ก่อนรันอะไรที่เขียนฐานข้อมูล ให้ยืนยัน host ก่อนว่าเป็น `dev` จริง** — เอกสารบอกว่า `.env.local` ชี้ `dev` ไม่ได้รับประกันว่าไฟล์จริงชี้อย่างนั้น (2026-08-13 มันชี้ **production** อยู่ และเพิ่งแก้เป็น `dev` วันที่ 14) ทั้ง migration และข้อมูลทดสอบจึงลงไปที่ production โดยไม่มีใครรู้ตัว
+
+```bash
+# เช็ค host ที่ .env.local ชี้อยู่จริง (ไม่พิมพ์รหัสผ่าน)
+node -e "const l=require('fs').readFileSync('.env.local','utf8').split(/\r?\n/).find(x=>x.startsWith('DATABASE_URL='));console.log(new URL(l.slice(l.indexOf('=')+1).replace(/^\"|\"$/g,'')).hostname)"
+```
+
 ⚠️ **`vercel.json` รัน `prisma migrate deploy` ตอน preview build ด้วย ไม่ใช่แค่ production** — ถ้า `DATABASE_URL` ตั้งเป็นค่าเดียวกันทุก environment การ push feature branch จะ **apply migration ลง production ทันทีทั้งที่ยังไม่ merge** ต้องตั้ง `DATABASE_URL` ของ scope **Preview** ให้ชี้ Neon branch `dev`
 
 **เครื่องที่รัน RPA มี `.env` ของตัวเอง** (`automation/.env` — gitignored) `INTEGRATION_API_KEY` ในไฟล์นั้นต้องตรงกับที่ตั้งใน Vercel/`.env.local` ของ server ที่ `GATEPASS_URL` ชี้ไป ไม่ตรงจะได้ 401 ตอน claim
