@@ -143,7 +143,21 @@ const claims = [
   ['vehicleForm URL = FrmOperation.aspx', read('automation/selectors.mjs').includes('reg/FrmOperation.aspx')],
   ['selectors ไม่มี #TODO ค้าง', !read('automation/selectors.mjs').includes("'#TODO'")],
   ['PROVINCE_PAD เป็น U+00A0', read('automation/selectors.mjs').includes(' ')],
-  ['run-sync.sh ยังไม่เรียก sync:vehicle (ต้องเปิดใช้ด้วยมือ)', !read('automation/run-sync.sh').includes('sync:vehicle')],
+  // runner ทั้งสองต้องเรียกทั้งสองฝั่ง และฝั่งรถต้องอยู่ "ทีหลัง" ฝั่งแรงงาน
+  // ถ้าสลับลำดับ ปัญหาฝั่งรถจะหน่วง sync แรงงานซึ่งมีค่ากว่า
+  ...['automation/run-sync.sh', 'automation/run-sync.ps1'].map((f) => {
+    const s = read(f);
+    const w = s.indexOf('npm run sync ');
+    const v = s.indexOf('npm run sync:vehicle');
+    return [`${f}: เรียกทั้งสองฝั่ง และรถอยู่หลังแรงงาน`, w !== -1 && v !== -1 && w < v];
+  }),
+  // ห้ามมี cron entry / scheduled task ที่สอง — ต้องอยู่ใน lock เดียวกัน
+  ['run-sync.sh ใช้ flock เดียวครอบทั้งสองฝั่ง',
+    (() => {
+      const s = read('automation/run-sync.sh');
+      const lock = s.indexOf('flock -n 9');
+      return lock !== -1 && lock < s.indexOf('npm run sync ') && lock < s.indexOf('npm run sync:vehicle');
+    })()],
   ['npm script sync:vehicle:dry มีจริง', read('automation/package.json').includes('sync:vehicle:dry')],
   ['dry-run ดัก waitForTimeout ที่ถูกปิดหน้าต่าง (ทั้งสองสคริปต์)',
     ['automation/epro-sync.mjs', 'automation/epro-sync-vehicle.mjs'].every((f) =>

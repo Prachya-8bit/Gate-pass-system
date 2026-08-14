@@ -63,14 +63,32 @@ $runLog = Join-Path $logDir ("sync-run-{0}.tmp" -f (Get-Date -Format 'yyyyMMdd-H
 $started = Stamp
 $rc = 1
 
+$rcWorker  = 1
+$rcVehicle = 1
+
 try {
     Set-Location $dir
     $env:HEADLESS = 'true'
 
     # Let cmd.exe do the redirection: PowerShell 5.1 wraps a native command's
     # stderr in ErrorRecord objects, which would mangle the log.
+    #
+    # Both sides run inside the one lock, worker first. Appending (>>) for the
+    # second run keeps the whole tick in a single $runLog, so the log block stays
+    # contiguous and sync.log is still opened only once at the end.
+    #
+    # Vehicle runs second so a problem there cannot delay the worker sync, which
+    # is the higher-value path. Do NOT split these into two scheduled tasks — the
+    # lock exists to stop two browsers logging into the same epro account at once.
     & cmd.exe /c "npm run sync > `"$runLog`" 2>&1"
-    $rc = $LASTEXITCODE
+    $rcWorker = $LASTEXITCODE
+
+    & cmd.exe /c "npm run sync:vehicle >> `"$runLog`" 2>&1"
+    $rcVehicle = $LASTEXITCODE
+
+    # Report whichever side failed first; a vehicle failure does not invalidate a
+    # worker run that already completed.
+    $rc = if ($rcWorker -ne 0) { $rcWorker } else { $rcVehicle }
 } finally {
     Write-Log "===== $started  เริ่ม sync ====="
     if (Test-Path $runLog) {
@@ -78,7 +96,7 @@ try {
         Append-Bytes ([System.IO.File]::ReadAllBytes($runLog))
         Remove-Item $runLog -Force -ErrorAction SilentlyContinue
     }
-    Write-Log "===== $(Stamp)  จบ sync (exit $rc) ====="
+    Write-Log "===== $(Stamp)  จบ sync (แรงงาน exit $rcWorker, รถ exit $rcVehicle) ====="
     $lock.Close()
 }
 
