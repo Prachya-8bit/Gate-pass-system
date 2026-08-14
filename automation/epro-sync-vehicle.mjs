@@ -151,9 +151,9 @@ try {
     const startAt = thaiInstant(vehicle.startDate, vehicle.startTime);
     const minsLeft = Math.floor((startAt.getTime() - Date.now()) / 60_000);
     if (minsLeft < LEAD_MINUTES) {
-      const msg =
-        `เวลาเริ่มเหลือ ${minsLeft} นาที (น้อยกว่า ${LEAD_MINUTES} นาที) ` +
-        'epro จะไม่รับคำขอนี้ — ต้องให้ผู้รับเหมายื่นใบใหม่';
+      // เขียนเป็น template literal เดียว ไม่ต่อด้วย + เพื่อให้ grep หาข้อความที่เห็นใน
+      // log แล้วเจอในซอร์ส — ข้อความที่ถูกต่อคนละบรรทัดหาไม่เจอตอนต้อง debug
+      const msg = `เวลาเริ่มเหลือ ${minsLeft} นาที (น้อยกว่า ${LEAD_MINUTES} นาที) epro จะไม่รับคำขอนี้ — ต้องให้ผู้รับเหมายื่นใบใหม่`;
       console.error(`  ✗ ข้ามและรายงานว่าล้มเหลวถาวร: ${msg}`);
       await reportWithRetry(batchKey, 'failed', msg, 'permanent');
       continue;
@@ -265,12 +265,17 @@ try {
         const shot = join(screenshotDir, `vehicle-dryrun-${Date.now()}.png`);
         await page.screenshot({ path: shot, fullPage: true }).catch(() => {});
         console.log(`\n[dry-run] ภาพหน้าจอ: ${shot}`);
-        console.log('[dry-run] ไม่กดบันทึก — คำขอยังคงสถานะ "กำลังส่ง" ต้องกด "ยังไม่ส่ง" หรือ');
-        console.log('[dry-run] รอ reaper 30 นาที เพื่อให้กลับมาส่งได้อีก');
         if (!HEADLESS) {
-          console.log('[dry-run] ค้างหน้านี้ไว้ 90 วินาที แล้วปิดเอง');
-          await page.waitForTimeout(90_000);
+          console.log('[dry-run] ค้างหน้านี้ไว้ 90 วินาที (ปิดหน้าต่างเพื่อข้ามได้)');
+          // ต้องดักไว้เอง: ถ้าผู้ใช้ปิดหน้าต่างก่อนครบเวลา waitForTimeout จะ throw
+          // ถ้าปล่อยหลุดไปถึง catch ด้านล่าง มันจะรายงานใบนี้เป็น "ไม่สำเร็จ"
+          // ทั้งที่ dry-run ไม่ได้ส่งอะไรเข้า epro เลย — ผู้ใช้ปิดหน้าต่างไม่ใช่ความล้มเหลว
+          await page.waitForTimeout(90_000).catch(() => {
+            console.log('[dry-run] หน้าต่างถูกปิดก่อนครบเวลา — ไม่ถือเป็นความล้มเหลว');
+          });
         }
+        console.log('[dry-run] ไม่ได้กดบันทึก คำขอยังอยู่สถานะ "กำลังส่ง"');
+        console.log('[dry-run] จะส่งใบนี้ใหม่: กด "ยังไม่ส่ง" บนหน้า admin หรือรอ reaper 30 นาที');
         break;
       }
 
