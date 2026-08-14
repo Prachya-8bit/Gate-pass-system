@@ -4,7 +4,11 @@
   "type": "module",
   "scripts": {
     "sync": "node --env-file=.env epro-sync.mjs",
-    "sync:dry": "node --env-file=.env epro-sync.mjs --dry-run"
+    "sync:dry": "node --env-file=.env epro-sync.mjs --dry-run",
+    "sync:vehicle": "node --env-file=.env epro-sync-vehicle.mjs",
+    "sync:vehicle:dry": "node --env-file=.env epro-sync-vehicle.mjs --dry-run",
+    "capture": "node --env-file=.env capture-page.mjs",
+    "capture:menu": "node --env-file=.env capture-page.mjs --list"
   },
   "dependencies": {
     "playwright": "^1.45.0"

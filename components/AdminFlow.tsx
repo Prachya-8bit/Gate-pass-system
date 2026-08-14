@@ -2,10 +2,12 @@
 
 import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import * as XLSX from 'xlsx';
-import { gDS } from '@/lib/constants';
+import { gDS, matchesCompanyFilter } from '@/lib/constants';
 import { Btn, GCard, Badge, InpBox, SelBox, TopBar } from '@/components/atoms';
 import { SYNC_LABELS } from '@/lib/sync';
 import ManagerSummary from '@/components/ManagerSummary';
+import SyncCell from '@/components/SyncCell';
+import VehicleRequests from '@/components/VehicleRequests';
 
 export interface RecordRow {
   id: string;
@@ -67,11 +69,6 @@ const stickyThStyle: React.CSSProperties = {
   // border-collapse ทำให้เส้นขอบของ th ที่ sticky หายตอนเลื่อน — ใช้ inset shadow แทน
   borderBottom: 'none',
   boxShadow: `inset 0 -2px 0 ${gDS.border}`,
-};
-
-const smallBtnStyle: React.CSSProperties = {
-  padding: '4px 10px',
-  fontSize: 12,
 };
 
 function KpiCard({
@@ -285,15 +282,10 @@ export default function AdminFlow({
     }
   }
 
-  const filtered = useMemo(() => {
-    if (companyFilter === 'ทั้งหมด') return records;
-    if (companyFilter === 'อื่นๆ') {
-      const q = customCompany.trim().toLowerCase();
-      if (!q) return records;
-      return records.filter((r) => r.company.toLowerCase().includes(q));
-    }
-    return records.filter((r) => r.company === companyFilter);
-  }, [records, companyFilter, customCompany]);
+  const filtered = useMemo(
+    () => records.filter((r) => matchesCompanyFilter(r.company, companyFilter, customCompany)),
+    [records, companyFilter, customCompany],
+  );
 
   // จำกัดความสูงกล่องตารางให้พอดี 20 แถวแรก (แถวสูงไม่เท่ากันเพราะบางแถวมีปุ่ม) — เกินกว่านั้นเลื่อนดู
   const recordsBoxRef = useRef<HTMLDivElement>(null);
@@ -406,69 +398,6 @@ export default function AdminFlow({
       setUserMsg({ ok: false, text: 'เกิดข้อผิดพลาด กรุณาลองใหม่อีกครั้ง' });
     } finally {
       setCreating(false);
-    }
-  }
-
-  function renderSyncCell(r: RecordRow) {
-    switch (r.syncStatus) {
-      case 'PENDING':
-        return (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-            <Badge color="gray">{SYNC_LABELS.PENDING}</Badge>
-            <Btn variant="accent" style={smallBtnStyle} onClick={() => action(r.id, 'confirm')}>
-              ยืนยัน
-            </Btn>
-          </div>
-        );
-      case 'CONFIRMED':
-        return (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-            <Badge color="amber">{SYNC_LABELS.CONFIRMED}</Badge>
-            <Btn variant="secondary" style={smallBtnStyle} onClick={() => action(r.id, 'unconfirm')}>
-              ยกเลิก
-            </Btn>
-          </div>
-        );
-      case 'SYNCING':
-        return <Badge color="blue">{SYNC_LABELS.SYNCING}</Badge>;
-      case 'SYNCED':
-        return (
-          <span title={r.syncedAt ? r.syncedAt.slice(0, 10) : undefined}>
-            <Badge color="green">{SYNC_LABELS.SYNCED}</Badge>
-          </span>
-        );
-      case 'FAILED':
-        return (
-          <div
-            style={{ display: 'flex', alignItems: 'center', gap: 6 }}
-            title={r.lastSyncError || undefined}
-          >
-            <Badge color="red">{SYNC_LABELS.FAILED}</Badge>
-            <Btn variant="danger" style={smallBtnStyle} onClick={() => action(r.id, 'retry')}>
-              ลองใหม่
-            </Btn>
-          </div>
-        );
-      case 'NEEDS_REVIEW':
-        return (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-            <Badge color="red">{SYNC_LABELS.NEEDS_REVIEW}</Badge>
-            <Btn variant="ok" style={smallBtnStyle} onClick={() => action(r.id, 'resolveSynced')}>
-              ส่งแล้ว
-            </Btn>
-            <Btn
-              variant="secondary"
-              style={smallBtnStyle}
-              onClick={() => action(r.id, 'resolveNotSynced')}
-            >
-              ยังไม่ส่ง
-            </Btn>
-          </div>
-        );
-      case 'CANCELLED':
-        return <Badge color="gray">{SYNC_LABELS.CANCELLED}</Badge>;
-      default:
-        return <Badge color="gray">{r.syncStatus}</Badge>;
     }
   }
 
@@ -653,7 +582,14 @@ export default function AdminFlow({
                         />
                       )}
                     </td>
-                    <td style={tdStyle}>{renderSyncCell(r)}</td>
+                    <td style={tdStyle}>
+                      <SyncCell
+                        status={r.syncStatus}
+                        syncedAt={r.syncedAt}
+                        lastSyncError={r.lastSyncError}
+                        onAction={(a) => action(r.id, a)}
+                      />
+                    </td>
                     <td style={tdStyle}>{r.syncedAt ? r.syncedAt.slice(0, 10) : '-'}</td>
                     <td style={tdStyle}>{r.name}</td>
                     <td style={tdStyle}>{r.idCard}</td>
@@ -686,6 +622,8 @@ export default function AdminFlow({
             </table>
           </div>
         </GCard>
+
+        <VehicleRequests companyFilter={companyFilter} customCompany={customCompany} />
 
         <GCard>
           <h3 style={{ margin: '0 0 12px', fontSize: 16, color: gDS.text }}>

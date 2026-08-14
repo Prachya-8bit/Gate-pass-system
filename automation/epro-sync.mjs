@@ -108,7 +108,14 @@ try {
       body: JSON.stringify({ runId }),
     });
     if (!claimRes.ok) {
-      console.error(`claim ล้มเหลว HTTP ${claimRes.status} — หยุดการทำงาน`);
+      // 5xx = ฝั่ง server ไม่พร้อม (Neon cold start / transaction timeout) — retry ได้
+      // ข้ามรอบนี้เฉยๆ ยังไม่ได้ claim อะไร ไม่มีข้อมูลเสียหาย cron รอบหน้าเอาต่อ
+      if (claimRes.status >= 500) {
+        console.error(`claim ล้มเหลว HTTP ${claimRes.status} — ข้ามรอบนี้ รอ cron รอบถัดไป`);
+        break;
+      }
+      // 400/401/403/404 = config ผิด (API key / GATEPASS_URL / ยังไม่ deploy) — ต้องมีคนแก้
+      console.error(`claim ล้มเหลว HTTP ${claimRes.status} — ตรวจ API key / GATEPASS_URL`);
       process.exit(1);
     }
     const payload = await claimRes.json();
@@ -153,8 +160,16 @@ try {
 
       if (dryRun) {
         console.log('\n[dry-run] กรอกใบงานครบแล้ว แต่ไม่กดบันทึก — ตรวจหน้าจอได้เลย');
-        console.log('[dry-run] ค้างหน้านี้ไว้ 90 วินาที แล้วปิดเอง');
-        await page.waitForTimeout(90_000);
+        console.log('[dry-run] ค้างหน้านี้ไว้ 90 วินาที (ปิดหน้าต่างเพื่อข้ามได้)');
+        // ต้องดักไว้เอง: ปิดหน้าต่างก่อนครบเวลาทำให้ waitForTimeout throw แล้วหลุด
+        // ไปถึง catch ด้านล่าง ซึ่งจัดข้อความอังกฤษของ Playwright เป็น unknown
+        // → record จริงถูกตีเป็น "ต้องตรวจสอบ" ให้คนไปเปิด epro เช็ค
+        // ทั้งที่ dry-run ไม่เคยกด submit — ปิดหน้าต่างไม่ใช่ความล้มเหลว
+        await page.waitForTimeout(90_000).catch(() => {
+          console.log('[dry-run] หน้าต่างถูกปิดก่อนครบเวลา — ไม่ถือเป็นความล้มเหลว');
+        });
+        console.log('[dry-run] ใบงานยังอยู่สถานะ "กำลังส่ง" — กด "ยังไม่ส่ง" บนหน้า admin');
+        console.log('[dry-run] หรือรอ reaper 30 นาที เพื่อให้กลับมาส่งได้อีก');
         break;
       }
 

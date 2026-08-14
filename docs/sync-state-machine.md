@@ -292,3 +292,82 @@ loop (สูงสุด 20 รอบ):
 | "Attempt 3 → Alert Administrator" | โปรเจกต์ไม่มี email / LINE / ช่องทางแจ้งเตือนใดๆ | แถบเตือนแดงบนหน้า Admin Dashboard คือ alert ตัวจริง |
 | Scalability → Message Queue | scale จริง ~สิบกว่ารายการ · โรงงานเดียว · RPA เครื่องเดียว | ไม่ทำ — แต่ state machine + polling API ย้ายไป MQ ทีหลังได้โดยไม่แก้ business logic |
 | ไม่มีสถานะ "ไม่ต้องส่ง" | ชื่อผิด/ยกเลิกงาน จะค้าง `PENDING` ตลอดกาล | เพิ่ม `CANCELLED` |
+
+---
+
+# ภาคผนวก 2 — ขยายไปใช้กับคำขอนำรถเข้าโรงงาน (2026-08-13)
+
+`VehicleRequest` ใช้ state machine เดียวกันนี้ทั้งดุ้น **ไม่มีสถานะใหม่ ไม่มี enum ใหม่** ทั้ง 7 สถานะและป้ายไทยใน `SYNC_LABELS` ใช้ได้ตรงๆ เพราะเป็นเรื่อง "ส่งเข้า EPRO แล้วหรือยัง" แบบเดียวกัน
+
+## ทำไมแยกตารางและแยก endpoint
+
+ไม่ได้เพิ่ม `formType` บน `Record` และไม่ได้เพิ่ม discriminator เข้า `/claim` เดิม เหตุผลหลักคือความปลอดภัยของ query ที่มีอยู่:
+
+`app/api/integration/claim/route.ts` เลือกแถวด้วย `OR: [{syncStatus:'CONFIRMED'}, {syncStatus:'FAILED',...}]` **โดยไม่มีเงื่อนไขชนิดฟอร์ม** วินาทีที่ใบขอรถไปอยู่ในตาราง `Record` query นี้จะหยิบมันไปด้วย และแม้จะเพิ่ม filter ใน commit เดียวกัน ก็ได้สร้าง **คลาสของบั๊ก** ที่ query ไหนลืมใส่ filter จะทำให้ใบขอรถหลุดไปโผล่ใน KPI man-day, `GET /api/records`, Excel export, การ group ด้วย `groupKey()`, และ `ManagerSummary`
+
+กรณีที่แย่ที่สุดของคลาสนี้คือ query ใน claim เอง และผลของมันคือ **ทะเบียนรถถูกพิมพ์ลงช่อง `txtRTM_VST_NAME` บันทึกเข้า EPRO ในชื่อพนักงานจริง แล้ว report `ok` → แถวกลายเป็น `SYNCED` และไม่มีใครรู้เลย** ซึ่งเป็นสิ่งที่สถาปัตยกรรม at-most-once ทั้งหมดนี้สร้างมาเพื่อกัน
+
+ตารางแยก **เฉื่อยต่อโค้ดเดิมทุกบรรทัด** RPA เก่ามองไม่เห็น และ "ลืมใส่ filter" เป็นไปไม่ได้เพราะไม่มีอะไรให้ filter
+
+เรื่อง version skew: RPA บนเครื่องโรงงาน deploy แยกจาก Vercel ถ้าใช้ `formType` ผลของ skew ทุกกรณีคือ **200 ที่แนบ payload ผิดแบบเงียบ** แต่การแยก endpoint ทำให้ผลเดียวที่เป็นไปได้คือ **404** ซึ่ง grep เจอในครั้งเดียว และ RPA ฝั่งรถจัดการ 404 เป็น "ข้ามเงียบ exit 0"
+
+## ต่างจากฝั่งคนงาน
+
+| | คนงาน | รถ |
+|---|---|---|
+| หน่วยที่ส่ง | ใบงาน = หลาย record จัดกลุ่มด้วย `groupKey()` | **1 คำขอ = 1 คัน = 1 แถว** |
+| `batchKey` | `company\|startDate\|endDate\|zone` | **`id` ของแถวนั้น** |
+| เลือกแถว | `findMany` แล้ว filter ตาม groupKey | **`findFirst`** + `orderBy: [{createdAt:'asc'},{id:'asc'}]` |
+| ปุ่ม "เพิ่ม" ในฟอร์ม EPRO | มี (`btnAddNewVisitor` + `dgVisitor`) ต้องนับแถว | **ไม่มี** (ห้ามมีผู้โดยสาร) กรอกครั้งเดียวจบ |
+| SyncLog | `kind='record'` | `kind='vehicle'` |
+
+⚠️ **`orderBy` ต้องมี tiebreak `{id:'asc'}`** — `createdAt` เป็น string วันที่ล้วน (`YYYY-MM-DD`) ทุกแถวที่ยื่นวันเดียวกันจึงเสมอกันหมด ฝั่งคนงานทนได้เพราะจัดกลุ่ม แต่การหยิบ **แถวเดียว** จะได้ผลไม่แน่นอนคนละรอบถ้าไม่มี tiebreak
+
+## กันส่งซ้ำด้วยแถวเดียว
+
+สิ่งที่กันไม่เคยเป็น array ของ ids แต่เป็น **predicate ใน `UPDATE`**:
+
+```ts
+const claimed = await tx.vehicleRequest.updateMany({
+  where: { id: target.id, syncStatus: { in: ['CONFIRMED', 'FAILED'] } },
+  data: claimData(runId, target.id, now),
+});
+if (claimed.count !== 1) return null;   // มี run อื่นชิงไปก่อน
+```
+
+`updateMany` จับ row-level lock ภายใต้ READ COMMITTED ของ PostgreSQL `UPDATE` ตัวที่สองบนแถวเดียวกันจะ block แล้ว**ประเมิน `WHERE` ใหม่กับ row version ที่ commit แล้ว** เห็น `SYNCING` จึงไม่ match อะไร คืน `count: 0` · `findFirst` ข้างบน**ไม่ใช่**ตัวกัน มันแค่เลือกผู้สมัคร ข้อมูลเก่าไปก็ไม่เป็นไร
+
+## นโยบายที่แชร์กัน (`lib/sync.ts`)
+
+`claimCutoffs()` · `claimableWhere()` · `claimData()` · `reportOutcome()` — ย้ายมาไว้ที่เดียวเพื่อให้การเปลี่ยนนโยบาย (อะไรหยิบได้, backoff แปลว่าอะไร, `unknown` ลงที่ไหน) แก้ที่เดียวไม่ใช่สองที่
+
+**จงใจไม่ทำ** helper ที่รับ Prisma delegate เป็นพารามิเตอร์ — Prisma 6 ไม่มี base type ของ delegate ทางเลือกทั้งหมดพาไปที่ `any`/`as never` ซึ่งจะทำให้พิมพ์ชื่อสถานะผิด (เช่น `'SYNCNG'`) compile ผ่านแล้ว query ไม่ match อะไรเลยแบบเงียบ ก้อนข้อมูลธรรมดายังคง type-safe เพราะทั้งสองโมเดลประกาศชื่อและชนิดของ sync field เหมือนกันเป๊ะ
+
+## กฎเฉพาะของฟอร์มรถที่กระทบ state machine
+
+**EPRO บังคับว่าเวลาเริ่มต้องห่างจากตอนกด Save อย่างน้อย 1 ชั่วโมง** ซึ่งวัดตอน **RPA กด Save** ไม่ใช่ตอนผู้รับเหมากรอก ระหว่างนั้นมี admin ยืนยัน (นานเท่าไหร่ก็ได้) + cron 15 นาที ผลคือใบที่ขอชิดขั้นต่ำจะถูก EPRO ปฏิเสธได้ **และ retry ยิ่งแย่ลงเพราะเวลาเดินหน้า**
+
+จึงมี 3 ชั้นที่ต้องคงไว้:
+
+1. **pre-flight ใน RPA** — ถ้า `startDateTime < now + 60 นาที` **ไม่ส่งเลย** รายงาน `failed` + **`permanent`** เพื่อตัดสิทธิ์ auto-retry (retry ไม่มีทางสำเร็จ) แล้วโผล่แถบเตือนแดงให้คนจัดการ
+2. **ดัก dialog หลังกด Save** — สคริปต์ accept dialog อัตโนมัติ ถ้าไม่เก็บข้อความไว้ตรวจ alert เตือน validation จะถูกกด OK แล้วรายงาน `ok` → **แถวกลายเป็น `SYNCED` ทั้งที่ EPRO ไม่ได้บันทึกอะไร = silent data loss**
+3. **แถบเตือนใบใกล้หมดเวลาบนการ์ด admin** (< 90 นาที) ให้ยืนยันด่วนหรือยกเลิก
+
+## error classification — เปลี่ยนจาก regex เป็นตำแหน่งที่พัง
+
+`epro-sync.mjs` เดิมจัดประเภทด้วย regex `/selector|validation|login/i` บนข้อความ exception ซึ่งทำให้ข้อความไทยล้วนถูกจัดเป็น retryable → `unknown` → `NEEDS_REVIEW` ทั้งที่พัง**ก่อน**กด submit และรู้แน่ว่าไม่มีอะไรถูกบันทึก = เสียแรงคนเปล่า
+
+`epro-sync-vehicle.mjs` ใช้ flag `submitClicked` แทน:
+
+- **ก่อน submit พัง** = ไม่มีอะไรถูกบันทึก → `failed` (+ `permanent` ถ้าเป็น selector/validation/login ที่ลองใหม่ก็ไม่หาย)
+- **หลังกด submit พัง** = ผลไม่แน่นอน → `unknown` → `NEEDS_REVIEW` **ห้ามเป็น `failed`** เพราะ `failed` retry ได้ = เสี่ยงส่งซ้ำ
+
+ตั้ง `submitClicked = true` **ก่อน** `click()` เพราะ throw ใน click เอง (nav race) ก็ต้องนับว่าไม่แน่นอน
+
+> แนะนำ retrofit ตรรกะนี้เข้า `epro-sync.mjs` ด้วย แต่ต้องเป็น **commit แยก** เพราะเปลี่ยนพฤติกรรมบนเส้นทางที่ใช้ production อยู่
+
+## ข้อจำกัดที่ยังอยู่
+
+- **reap เกิดขึ้นตอน claim เท่านั้น** ถ้าสคริปต์ฝั่งรถหยุดทำงาน แถวที่ค้าง `SYNCING` จะไม่ถูก reap (พฤติกรรมเดียวกับฝั่งคนงาน)
+- **login EPRO 2 ครั้งต่อ tick** เพราะแยกสคริปต์ ถ้าเจอ lockout ให้รวมสองสคริปต์ให้แชร์ browser context เดียว
+- **ระบบไม่รู้ผลอนุมัติจาก EPRO** `SYNCED` = "ส่งเข้า EPRO แล้ว" ไม่ใช่ "อนุมัติแล้ว" EPRO ไม่มี API ให้อ่านผลกลับ
