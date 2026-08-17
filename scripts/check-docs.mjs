@@ -159,6 +159,28 @@ const claims = [
       const lock = s.indexOf('flock -n 9');
       return lock !== -1 && lock < s.indexOf('npm run sync ') && lock < s.indexOf('npm run sync:vehicle');
     })()],
+  // run-sync.cmd คือสิ่งที่ Task Scheduler เรียกจริง ๆ บนเครื่อง sync
+  // เดิมมันอยู่แต่บนเครื่อง server แบบ untracked และเรียก `npm run sync` ตรง ๆ
+  // ทำให้ PR #4 (ที่สอน run-sync.ps1 ให้รันฝั่งรถ) ไม่มีผลอะไรเลยกับรอบที่รันจริง
+  // ฝั่งแรงงานทำงานต่อไป ฝั่งรถเงียบ และไม่มี error ให้เห็น
+  // สาม assert นี้กันไม่ให้กลับไปเป็นแบบนั้นอีก
+  ['run-sync.cmd อยู่ใน repo (คือ entry point ของ Task Scheduler)',
+    existsSync(join(ROOT, 'automation/run-sync.cmd'))],
+  ...(existsSync(join(ROOT, 'automation/run-sync.cmd'))
+    ? (() => {
+        const s = read('automation/run-sync.cmd');
+        // ตัด REM ออกก่อนตรวจ: comment ในไฟล์นี้ *อธิบาย* บั๊กเก่าที่เคยเรียก npm ตรง ๆ
+        // และเตือนเรื่อง hard-code path จึงมีคำพวกนั้นอยู่ตามเจตนา ต้องตรวจโค้ดจริงเท่านั้น
+        const code = s.replace(/^\s*REM\b.*$/gim, '');
+        return [
+          ['run-sync.cmd ส่งต่อไป run-sync.ps1', /-File\s+"%~dp0run-sync\.ps1"/.test(code)],
+          // ถ้า .cmd เรียก npm เองอีก logic จะแตกเป็นสองที่และ drift ได้อีกรอบ
+          ['run-sync.cmd ไม่เรียก npm เอง (logic อยู่ใน .ps1 ที่เดียว)', !/npm\s+run/.test(code)],
+          // path แข็งผูกกับเครื่องเดียว และพังเงียบถ้า checkout ย้ายที่
+          ['run-sync.cmd ไม่ hard-code path ของ checkout', !/[A-Za-z]:\\/.test(code)],
+        ];
+      })()
+    : []),
   ['npm script sync:vehicle:dry มีจริง', read('automation/package.json').includes('sync:vehicle:dry')],
   ['dry-run ดัก waitForTimeout ที่ถูกปิดหน้าต่าง (ทั้งสองสคริปต์)',
     ['automation/epro-sync.mjs', 'automation/epro-sync-vehicle.mjs'].every((f) =>

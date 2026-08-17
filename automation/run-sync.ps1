@@ -44,9 +44,30 @@ function Append-Bytes([byte[]]$bytes) {
 function Write-Log([string]$text) { Append-Bytes $utf8NoBom.GetBytes("$text`n") }
 function Stamp { Get-Date -Format 'yyyy-MM-dd HH:mm:ss' }
 
+# Task Scheduler hands a task a much narrower PATH than an interactive shell, and
+# the account the task runs as may not have Node.js on it at all. That is the usual
+# reason someone hand-writes a .cmd with a full path to npm in it — which is exactly
+# what the sync host had before run-sync.cmd was tracked. So find npm ourselves
+# instead of trusting PATH: if this exits 1, BOTH syncs stop, not just the vehicle
+# one, which would turn a one-sided outage into a two-sided one.
 if (-not (Get-Command npm -ErrorAction SilentlyContinue)) {
-    Write-Log "$(Stamp)  ไม่พบ npm — ตรวจว่าติดตั้ง Node.js แล้ว และ PATH ที่ Task Scheduler ใช้มองเห็น"
-    exit 1
+    # Rooted-path guard: an unset variable interpolates to "\nodejs", and Test-Path
+    # would then resolve that against the current directory and could match by luck.
+    $npmDir = @(
+        "$env:ProgramFiles\nodejs",
+        "${env:ProgramFiles(x86)}\nodejs",
+        "$env:LOCALAPPDATA\Programs\nodejs",
+        "$env:APPDATA\npm"
+    ) | Where-Object { $_ -match '^[A-Za-z]:\\' -and (Test-Path (Join-Path $_ 'npm.cmd')) } |
+        Select-Object -First 1
+
+    if (-not $npmDir) {
+        Write-Log "$(Stamp)  ไม่พบ npm — ตรวจว่าติดตั้ง Node.js แล้ว และ PATH ที่ Task Scheduler ใช้มองเห็น"
+        exit 1
+    }
+    # Child cmd.exe inherits this, so `npm run ...` below resolves.
+    $env:Path = "$npmDir;$env:Path"
+    Write-Log "$(Stamp)  npm ไม่อยู่ใน PATH ของ Task Scheduler — ใช้ $npmDir"
 }
 
 # Exclusive lock — bail immediately if a run is already in progress.
