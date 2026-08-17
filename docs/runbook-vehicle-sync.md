@@ -3,8 +3,15 @@
 เปิดเอกสารนี้เมื่อ **ฝั่งลงทะเบียนแรงงานทำงานปกติ แต่ฝั่งคำขอนำรถไม่ส่ง**
 
 อาการแบบนั้นตัดสาเหตุร่วมออกไปแล้วเกือบหมด — ถ้าฝั่งแรงงานส่งได้ แปลว่า login EPRO,
-เครือข่าย/VPN, Playwright, Node/npm, `flock`, Task Scheduler, `GATEPASS_URL` และ
-`INTEGRATION_API_KEY` ใช้งานได้ทั้งหมด เหลือเฉพาะสิ่งที่เป็นของเส้นทางรถเท่านั้น
+เครือข่าย/VPN, Playwright, Node/npm, lock, `GATEPASS_URL` และ `INTEGRATION_API_KEY`
+ใช้งานได้ทั้งหมด
+
+**แต่ยังไม่ได้ตัด Task Scheduler ออก** — ฝั่งแรงงานทำงานพิสูจน์แค่ว่า task *รัน* ไม่ได้พิสูจน์ว่า
+task เรียก runner ตัวที่รู้จักฝั่งรถ นี่คือสาเหตุของเคสแรกจริง ๆ (2026-08-17) จึงต้องเริ่มที่ขั้น 1
+
+**ถ้า `npm run sync:vehicle` ด้วยมือบนเครื่อง server ทำงานได้สมบูรณ์ แต่รอบที่ตั้งเวลาเงียบ**
+→ ข้ามไป **ขั้น 1 ได้เลย** เพราะ manual ที่ผ่านตัด env, API key, `GATEPASS_URL`, EPRO,
+selector และการมีอยู่ของโค้ดออกทั้งหมด เหลือแค่ "task เรียกอะไร" อย่างเดียว
 
 | | |
 |---|---|
@@ -31,24 +38,68 @@
 
 ---
 
-## ขั้น 1 — server pull โค้ดใหม่มาแล้วจริงไหม
+## ขั้น 1 — Task Scheduler เรียก "ไฟล์ไหน" และไฟล์นั้นใหม่จริงไหม
 
-Task Scheduler จะรันฝั่งรถได้ก็ต่อเมื่อ `run-sync.ps1` เป็นเวอร์ชันที่เรียก `sync:vehicle`
-ซึ่งเข้า `main` ตอน PR #4 (merge 2026-08-14 09:14 UTC)
+> ⚠️ **อย่าเริ่มจากการเช็ค `run-sync.ps1`** ครั้งแรกที่เกิดปัญหานี้ (2026-08-17) สาเหตุคือ
+> task เรียก `run-sync.cmd` ซึ่งตอนนั้น**ไม่ได้อยู่ใน git** และเรียก `npm run sync` ตรง ๆ
+> การเช็ค `run-sync.ps1` จึงเห็นสองบรรทัดครบและ**บอกว่าผ่านทั้งที่ไฟล์นั้นไม่ได้ถูกรันเลย**
+> ต้องเริ่มจาก "task เรียกอะไร" เสมอ ไม่ใช่ "ไฟล์ที่เราคิดว่าถูกเรียกมีอะไร"
+
+### 1.1 task เรียกอะไร จากโฟลเดอร์ไหน
 
 ```powershell
-cd <checkout บน server>
-git log --oneline -3
-git show HEAD:automation/run-sync.ps1 | Select-String "npm run sync"
+Get-ScheduledTask | Where-Object { ($_.Actions | ForEach-Object { "$($_.Execute) $($_.Arguments)" }) -match 'run-sync|npm|node' } |
+  ForEach-Object { "TASK: $($_.TaskName)  [$($_.State)]"; $_.Actions | ForEach-Object { "  Execute : $($_.Execute)"; "  Args    : $($_.Arguments)"; "  WorkDir : $($_.WorkingDirectory)" } }
 ```
 
-ต้องเห็น **สองบรรทัด**: `npm run sync` และ `npm run sync:vehicle`
-ถ้าเห็นบรรทัดเดียว → `git pull` แล้วเช็คซ้ำ
+| ผลที่ได้ | แปลว่า |
+|---|---|
+| `Execute` ลงท้าย `run-sync.cmd` | ปกติ — ไปข้อ 1.2 |
+| `Execute` เป็น `powershell.exe` + `-File ...run-sync.ps1` | ก็ใช้ได้ — ไปข้อ 1.2 (ข้ามการเช็ค `.cmd`) |
+| `Execute`/`Args` มี `npm run sync` ตรง ๆ | **นี่คือสาเหตุ** — task ไม่ผ่าน runner จึงไม่มีทางได้ฝั่งรถ → ไปข้อ 1.3 |
+| `State` = `Disabled` | task ถูกปิด → `Enable-ScheduledTask -TaskName "<ชื่อ>"` |
+
+จด `WorkDir` ไว้ — **ทุกคำสั่งในขั้นถัดไปต้องรันในโฟลเดอร์นั้น** ไม่ใช่ checkout ที่คุณเคย `git pull`
+(เครื่อง sync ใช้ `C:\gatepass\Gate-pass-system\automation`)
+
+### 1.2 ไฟล์ในโฟลเดอร์นั้นใหม่จริงไหม
+
+`run-sync.cmd` เป็นแค่ wrapper ที่ส่งต่อไป `run-sync.ps1` ซึ่งเป็นที่อยู่ของ logic ทั้งหมด
+ต้องเช็คทั้งสองไฟล์ เพราะ**ไฟล์เดียวเก่าก็พอที่จะทำให้ฝั่งรถเงียบ**
 
 ```powershell
-cd automation
-npm run                      # ต้องมี sync:vehicle และ sync:vehicle:dry ในรายการ
-Test-Path .\epro-sync-vehicle.mjs    # ต้องเป็น True
+cd <WorkDir จากข้อ 1.1>
+git log --oneline -3
+Select-String -Path .\run-sync.cmd -Pattern "run-sync.ps1"   # ต้องเจอ 1 บรรทัด
+Select-String -Path .\run-sync.ps1 -Pattern "npm run sync"    # ต้องเจอ 2 บรรทัด
+npm run                        # ต้องมี sync:vehicle และ sync:vehicle:dry
+Test-Path .\epro-sync-vehicle.mjs                             # ต้องเป็น True
+```
+
+- `run-sync.cmd` **ไม่มีคำว่า `run-sync.ps1`** (มี `npm run sync` แทน) → ไฟล์เก่าที่ยัง untracked → ข้อ 1.3
+- `run-sync.ps1` เจอ **บรรทัดเดียว** → checkout เก่ากว่า PR #4 (merge 2026-08-14 09:14 UTC) → `git pull` ในโฟลเดอร์นี้
+
+### 1.3 ถ้าเป็นไฟล์เก่าที่ยัง untracked
+
+`git pull` จะ **abort** ด้วย `untracked working tree files would be overwritten by merge`
+เพราะ repo มี `automation/run-sync.cmd` แล้ว ต้องย้ายของเดิมออกก่อน
+
+```powershell
+cd <WorkDir จากข้อ 1.1>
+Get-Content .\run-sync.cmd                    # ดูก่อนว่ามันทำอะไรพิเศษไหม (เช่นตั้ง PATH)
+Rename-Item .\run-sync.cmd run-sync.cmd.local-backup
+git pull
+Select-String -Path .\run-sync.cmd -Pattern "run-sync.ps1"   # ต้องเจอแล้ว
+```
+
+**ถ้าของเดิมตั้ง `PATH` ให้ npm** ต้องย้ายบรรทัดนั้นมาไว้ก่อนบรรทัด `powershell.exe` ในไฟล์ใหม่
+ถ้าไม่ทำ รอบถัดไปจะขึ้น `ไม่พบ npm — ตรวจว่าติดตั้ง Node.js แล้ว...` ใน `sync.log` (เห็นชัด ไม่เงียบ)
+
+ทดสอบทันทีโดยไม่ต้องรอ trigger — คำสั่งนี้**ส่งเข้า EPRO จริง** ให้ทำตอนที่พร้อมเฝ้าดู:
+
+```powershell
+Start-ScheduledTask -TaskName "<ชื่อ task จากข้อ 1.1>"
+Get-Content .\logs\sync.log -Tail 40
 ```
 
 ---
@@ -67,8 +118,22 @@ Get-Content logs\sync.log -Tail 80
 
 | บรรทัดปิด | แปลว่า |
 |---|---|
-| `จบ sync (exit N)` | **สคริปต์เก่า** — pull ก่อน PR #4 ฝั่งรถไม่เคยถูกเรียก → กลับไปขั้น 1 |
+| **ไม่มีบล็อกใหม่เลย** ตั้งแต่เวลาที่ควรรัน | `run-sync.ps1` ไม่เคยเริ่มทำงาน → task เรียกอย่างอื่น หรือ task ไม่ trigger → **กลับไปขั้น 1** และดู `Get-ScheduledTaskInfo` ด้านล่าง |
+| มีแต่ output ฝั่งแรงงาน ปิดด้วย `จบ sync (exit N)` | **สคริปต์เก่า** — pull ก่อน PR #4 ฝั่งรถไม่เคยถูกเรียก → กลับไปขั้น 1.2 |
 | `จบ sync (แรงงาน exit X, รถ exit Y)` | สคริปต์ใหม่ทำงานแล้ว → ดูตารางถัดไป |
+| `ข้ามรอบนี้ — sync ก่อนหน้ายังทำงานอยู่` ทุกรอบ | มี process ค้างถือ lock อยู่ → ดู `Get-Process node, chrome` แล้วปิดตัวที่ค้าง |
+
+ถ้าไม่มีบล็อกใหม่เลย ให้ดูว่า task รันแล้วล้มเหลวก่อนถึงสคริปต์หรือไม่:
+
+```powershell
+Get-ScheduledTask -TaskName "<ชื่อ task>" | Get-ScheduledTaskInfo
+```
+
+| ผล | แปลว่า |
+|---|---|
+| `LastRunTime` เก่ามาก / ว่าง | trigger ไม่ทำงาน — เปิด Task Scheduler ดู tab Triggers |
+| `LastTaskResult` = `0` แต่ log ไม่ขยับ | task รันสิ่งที่ไม่ใช่ runner ของเรา → ขั้น 1.1 |
+| `LastTaskResult` ไม่ใช่ `0` | ล้มเหลวก่อนถึงสคริปต์ — path ผิด, บัญชีที่รันไม่มีสิทธิ์, หรือ `Execute` ไม่มีไฟล์นั้น |
 
 ### ข้อความในบล็อก → สาเหตุ → วิธีแก้
 
@@ -184,14 +249,23 @@ npm run capture -- --menu "นำรถยนต์" --name FrmVehicle
 ## ถ้ายังไม่หาย — ส่งข้อมูลชุดนี้มา
 
 ```powershell
-cd <checkout บน server>
+# task เรียกอะไร (สำคัญที่สุด — อย่าข้าม)
+Get-ScheduledTask | Where-Object { ($_.Actions | ForEach-Object { "$($_.Execute) $($_.Arguments)" }) -match 'run-sync|npm|node' } |
+  ForEach-Object { "TASK: $($_.TaskName)  [$($_.State)]"; $_.Actions | ForEach-Object { "  $($_.Execute) $($_.Arguments)"; "  WorkDir: $($_.WorkingDirectory)" }; $_ | Get-ScheduledTaskInfo | Select-Object LastRunTime, LastTaskResult, NextRunTime }
+
+cd <WorkDir ที่ได้จากคำสั่งข้างบน>
 git log --oneline -3
-git show HEAD:automation/run-sync.ps1 | Select-String "npm run sync"
-node scripts\check-rpa-env.mjs
-Get-Content automation\logs\sync.log -Tail 80
-Get-ChildItem automation\screenshots\vehicle-* -ErrorAction SilentlyContinue |
+git status --short                              # ไฟล์ที่แก้ค้าง/untracked ในโฟลเดอร์นี้
+Select-String -Path .\run-sync.cmd, .\run-sync.ps1 -Pattern "npm run sync|run-sync.ps1"
+node ..\scripts\check-rpa-env.mjs
+Get-Content .\logs\sync.log -Tail 80
+Get-ChildItem .\screenshots\vehicle-* -ErrorAction SilentlyContinue |
   Sort-Object LastWriteTime -Descending | Select-Object -First 3 Name, LastWriteTime
 ```
+
+> ใช้ `Select-String` อ่าน**ไฟล์บนดิสก์** ไม่ใช่ `git show HEAD:...` เพราะ `git show` แสดง
+> เวอร์ชันที่ commit ไว้ ไม่ใช่ไฟล์ที่ Task Scheduler รันจริง ถ้ามีใครแก้ไฟล์บนเครื่อง server
+> หรือไฟล์นั้น untracked (เคสจริง 2026-08-17) `git show` จะรายงานผลที่ไม่เกี่ยวกับความจริงเลย
 
 พร้อมบอกว่า **รันแบบไหน** — Task Scheduler รันเอง หรือสั่งด้วยมือ
 
