@@ -92,8 +92,14 @@ git pull
 Select-String -Path .\run-sync.cmd -Pattern "run-sync.ps1"   # ต้องเจอแล้ว
 ```
 
-**ถ้าของเดิมตั้ง `PATH` ให้ npm** ต้องย้ายบรรทัดนั้นมาไว้ก่อนบรรทัด `powershell.exe` ในไฟล์ใหม่
-ถ้าไม่ทำ รอบถัดไปจะขึ้น `ไม่พบ npm — ตรวจว่าติดตั้ง Node.js แล้ว...` ใน `sync.log` (เห็นชัด ไม่เงียบ)
+**ถ้าของเดิมปักพาธเต็มของ npm หรือตั้ง `PATH` ไว้** ปกติไม่ต้องย้ายมาเอง — `run-sync.ps1`
+หา npm ให้เองจาก `%ProgramFiles%\nodejs`, `%ProgramFiles(x86)%\nodejs`,
+`%LOCALAPPDATA%\Programs\nodejs`, `%APPDATA%\npm` แล้วจะขึ้นใน log ว่า
+`npm ไม่อยู่ใน PATH ของ Task Scheduler — ใช้ <path>` ซึ่ง**ไม่ใช่ error** แค่บอกว่าใช้ทางสำรอง
+
+จะเจอ `ไม่พบ npm — ตรวจว่าติดตั้ง Node.js แล้ว...` ก็เฉพาะเมื่อ Node.js ติดตั้งไว้ที่อื่นนอก 4 ที่นั้น
+(เช่น nvm) ตอนนั้นให้เอาบรรทัดตั้ง `PATH` จาก `run-sync.cmd.local-backup` มาใส่ก่อนบรรทัด
+`powershell.exe` ในไฟล์ใหม่
 
 ทดสอบทันทีโดยไม่ต้องรอ trigger — คำสั่งนี้**ส่งเข้า EPRO จริง** ให้ทำตอนที่พร้อมเฝ้าดู:
 
@@ -140,6 +146,8 @@ Get-ScheduledTask -TaskName "<ชื่อ task>" | Get-ScheduledTaskInfo
 | ข้อความที่เห็น | สาเหตุ | ทำอะไร |
 |---|---|---|
 | `ไม่มีคำขอนำรถเข้าที่ต้องส่ง — จบการทำงาน` | ไม่มีใบ `ยืนยันแล้ว` | ไม่ใช่บั๊ก — ให้ admin ยืนยันใบก่อน |
+| `npm ไม่อยู่ใน PATH ของ Task Scheduler — ใช้ <path>` | **ไม่ใช่ error** — PATH ที่ task ได้ไม่มี Node.js สคริปต์หาเจอเองแล้วใช้ต่อ | ไม่ต้องทำอะไร |
+| `ไม่พบ npm — ตรวจว่าติดตั้ง Node.js แล้ว...` | Node.js อยู่นอก 4 ที่มาตรฐาน (เช่น nvm) → **ทั้งสองฝั่งหยุด ไม่ใช่แค่ฝั่งรถ** | เอาบรรทัดตั้ง `PATH` จาก `run-sync.cmd.local-backup` มาใส่ก่อนบรรทัด `powershell.exe` ใน `run-sync.cmd` |
 | `Missing script: "sync:vehicle"` | pull ไม่ครบ หรือ pull ผิด checkout | `git pull` ใน checkout ที่ Task Scheduler ใช้จริง |
 | `ยังไม่ได้ตั้งค่า <NAME> ใน .env` | env ขาด | เติมใน `automation/.env` (ดูขั้น 4) |
 | `claim ล้มเหลว HTTP 401 — ตรวจ API key / GATEPASS_URL` | `INTEGRATION_API_KEY` ไม่ตรงกับที่ตั้งใน Vercel | ดูขั้น 4 |
