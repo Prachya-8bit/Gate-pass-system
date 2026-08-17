@@ -23,6 +23,7 @@ const DOCS = [
   'docs/architecture.md',
   'docs/sync-state-machine.md',
   'docs/error-reference.md',
+  'docs/runbook-vehicle-sync.md',
   'automation/README.md',
 ];
 
