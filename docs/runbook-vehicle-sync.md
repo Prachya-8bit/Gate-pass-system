@@ -118,48 +118,49 @@ Get-Content .\logs\sync.log -Tail 40
 > `run-sync.ps1` → npm) ทำงานได้ **ไม่ได้พิสูจน์ว่าตารางเวลาทำงาน** ถ้าผ่านตรงนี้แล้วรอบ
 > ที่ตั้งเวลายังเงียบ ให้ไปขั้น 1.4
 
-### ขั้น 1.4 — trigger ตั้งไว้แต่ไม่รันเลย (repetition ขาด Duration)
+### ขั้น 1.4 — "task ยิงตรงเวลา" กับ "sync ทำงาน" เป็นคนละเรื่อง
 
-เคสจริง 2026-08-18: task ชี้ไฟล์ถูก ไฟล์ใหม่ครบ `State` = `Ready` `LastTaskResult` = `0`
-`NextRunTime` ก็ดูปกติ แต่ **task ไม่เคยรันเองเลยตั้งแต่สร้าง** เพราะ trigger เป็น
+⚠️ **จุดที่พลาดกันจริง ๆ (2026-08-18):** ตอนนั้นสรุปว่า trigger พังเพราะเป็น
+`<Repetition><Interval>PT10M</Interval></Repetition>` ที่ไม่มี `<Duration>` — **สรุปผิด**
+`sync.log` ของเครื่องนั้นพิสูจน์เองว่า trigger ตัวนั้นยิงตรงเวลาทุก 10 นาที (บล็อก 14:15,
+14:25, 14:35, … เรียงกันไม่ขาด) สาเหตุจริงคือ `run-sync.cmd` ตัวเก่าที่ untracked ตามขั้น 1.2/1.3
+คือ task ยิงถูกต้องมาตลอด แต่ไปเรียกไฟล์ที่ไม่รู้จักฝั่งรถและไม่เขียน banner
 
-```xml
-<Repetition><Interval>PT10M</Interval></Repetition>   <!-- ไม่มี <Duration> -->
-```
+**บทเรียน: หลักฐานว่า `run-sync.ps1` ได้ทำงานคือ banner ใน `sync.log` ไม่ใช่หน้า trigger**
+`State` = `Ready`, `LastTaskResult` = `0`, `NextRunTime` สวย — ทั้งหมดนี้เป็นจริงได้พร้อมกับที่
+ฝั่งรถไม่เคยถูกเรียกเลย อย่าใช้หน้า Task Scheduler ตัดสินว่า sync ทำงาน
 
-`<Interval>` ที่ไม่มี `<Duration>` คู่กันจะ**ไม่ถูกรัน** วัดเทียบสองตัวที่ต่างกันแค่บรรทัดนี้:
+ลำดับที่ถูกคือ **อ่าน `sync.log` ก่อน** (ขั้น 2) แล้วค่อยย้อนมาดู trigger เมื่อพบว่า
+**ไม่มีบล็อกใหม่โผล่เองเลย**:
 
-| trigger | ผล |
-|---|---|
-| มี `<Duration>P1D</Duration>` | `LastTaskResult` = `0` — รันตามรอบจริง |
-| ไม่มี `<Duration>` | `LastTaskResult` = `267011` (`SCHED_S_TASK_HAS_NOT_RUN`) — ไม่รันเลย |
+| สิ่งที่เห็นใน `sync.log` | แปลว่า | ไปที่ |
+|---|---|---|
+| มีบล็อกโผล่เองตามรอบ แต่ไม่มี `----- ฝั่งรถ -----` | runner เก่า / `run-sync.cmd` เก่า | ขั้น 1.2 |
+| มีบล็อกครบทั้งสองฝั่ง แต่ฝั่งรถบอกว่าไม่มีงาน | ไม่ใช่บั๊ก | ขั้น 0 |
+| **ไม่มีบล็อกใหม่เลย** ทั้งที่ควรถึงรอบแล้วหลายรอบ | trigger หรือ action ไม่ทำงาน | อ่านต่อข้างล่าง |
 
-**สิ่งที่ทำให้จับยาก: ทั้งสองแบบรายงาน `NextRunTime` ตรงตามรอบเหมือนกัน** Task Scheduler
-เดิน `NextRunTime` ให้ต่อไปแม้เป็น repetition ที่มันไม่รัน ทั้งหน้า GUI, tab Triggers และ
-`Get-ScheduledTaskInfo` จึงดูปกติหมด ตัวที่ฟ้องคือ **`LastRunTime`/`LastTaskResult` ที่ไม่ขยับ**
-
-ตรวจ:
+เมื่อไม่มีบล็อกใหม่จริง ๆ ให้ดูนิยาม trigger:
 ```powershell
 Export-ScheduledTask -TaskName "<ชื่อ task>"
-```
-ใน `<Repetition>` **ต้องมี `<Duration>`** ถ้ามี `<Interval>` — และดูให้ตรงว่าเป็น `<Duration>`
-ที่อยู่ใน `<Repetition>` ไม่ใช่ตัวใน `<IdleSettings>` (task ที่พังก็มี `<Duration>` ใต้
-`<IdleSettings>` อยู่แล้ว การ grep หาคำว่า `Duration` เฉย ๆ จึงผ่านทั้งที่พัง)
-
-แก้ด้วยการลงทะเบียนใหม่จากนิยามที่อยู่ในรีโป (ต้อง **Run as Administrator**):
-```powershell
-cd <WorkDir จากข้อ 1.1>
-.\register-task.ps1                      # ทุก 15 นาที (ค่าเริ่มต้น)
-```
-สคริปต์ตรวจผลงานตัวเองด้วย `Export-ScheduledTask` แล้ว throw ถ้า `<Duration>` ไม่ติด
-จึงไม่มีทางลงทะเบียน trigger ที่พังแบบเดิมได้อีก
-
-ยืนยันว่า**หายจริง** ต้องปล่อยให้ถึงรอบเอง ห้ามใช้ `Start-ScheduledTask`:
-```powershell
 Get-ScheduledTask -TaskName "<ชื่อ task>" | Get-ScheduledTaskInfo
 ```
-`LastTaskResult` ต้องเปลี่ยนจาก `267011` เป็น `0` เอง และ `logs\sync.log` ต้องมีบล็อกใหม่
-โผล่เองทุก ~15 นาที
+- `LastTaskResult` = `267011` (`SCHED_S_TASK_HAS_NOT_RUN`) = **ยังไม่เคยรันเลย**
+- `<Repetition>` ที่มี `<Interval>` ควรมี `<Duration>` กำกับด้วย (รูปแบบที่หน้า GUI สร้างและ
+  `Register-ScheduledTask` รับตรง ๆ) — **การขาด `<Duration>` ไม่ได้พิสูจน์ว่าพัง** ของบนเครื่อง
+  ยิงได้อยู่ แต่การปล่อยไว้ครึ่ง ๆ กลาง ๆ เท่ากับพึ่ง default ที่ไม่มีเอกสารรองรับ ในตัวแปรที่
+  ตัดสินว่า sync จะรันหรือไม่
+- ถ้าจะ grep หา `<Duration>` ให้ดูว่าอยู่ใน `<Repetition>` จริง — ทุก task มี `<Duration>`
+  ใต้ `<IdleSettings>` อยู่แล้ว การ grep คำเปล่า ๆ จึงผ่านได้ทั้งที่ repetition ไม่มี
+
+ตั้งใหม่จากนิยามที่อยู่ในรีโป (ต้อง **Run as Administrator**):
+```powershell
+cd <WorkDir จากข้อ 1.1>
+.\register-task.ps1                      # ทุก 10 นาที (ค่าเริ่มต้น)
+```
+
+ยืนยันว่า**หายจริง** ต้องปล่อยให้ถึงรอบเอง — `Start-ScheduledTask` ข้าม trigger จึงผ่านได้
+แม้ตารางเวลาไม่ทำงาน และเคยทำให้เข้าใจผิดว่าหายแล้วมาก่อน เกณฑ์คือ **มีบล็อกใหม่ใน
+`sync.log` โผล่เองทุก ~10 นาที และมี `----- ฝั่งรถ -----` อยู่ในบล็อกนั้น**
 
 ---
 
@@ -197,12 +198,11 @@ Get-ScheduledTask -TaskName "<ชื่อ task>" | Get-ScheduledTaskInfo
 
 | ผล | แปลว่า |
 |---|---|
-| `LastTaskResult` = `267011` | `SCHED_S_TASK_HAS_NOT_RUN` — **ยังไม่เคยรันเลย** มักเป็น repetition ที่ขาด `<Duration>` → **ขั้น 1.4** |
+| `LastTaskResult` = `267011` | `SCHED_S_TASK_HAS_NOT_RUN` — **ยังไม่เคยรันเลย** → **ขั้น 1.4** |
 | `LastRunTime` เก่ามาก / ว่าง | trigger ไม่ทำงาน → **ขั้น 1.4** |
 | `LastRunTime` ตรงกับเวลาที่เคยสั่ง `Start-ScheduledTask` ด้วยมือเท่านั้น | trigger ไม่เคยยิงเอง manual run ปิดบังไว้ → **ขั้น 1.4** |
-| `NextRunTime` ห่างเป็นหลักชั่วโมง ทั้งที่ควรทุก 15 นาที | trigger ไม่ได้ตั้ง repetition ไว้ → **ขั้น 1.4** |
-| `NextRunTime` ดูถูกต้อง แต่ `LastRunTime` ไม่ขยับ | **ค่านี้เชื่อไม่ได้** — Task Scheduler เดิน `NextRunTime` ให้แม้ repetition ที่ไม่รัน → **ขั้น 1.4** |
-| `LastTaskResult` = `0` แต่ log ไม่ขยับ | task รันสิ่งที่ไม่ใช่ runner ของเรา → ขั้น 1.1 |
+| `NextRunTime` ห่างเป็นหลักชั่วโมง ทั้งที่ควรทุก 10 นาที | trigger ไม่ได้ตั้ง repetition ไว้ → **ขั้น 1.4** |
+| **`LastTaskResult` = `0`, `LastRunTime` ขยับตามรอบ แต่ `sync.log` ไม่มีบล็อกใหม่** | **เคสจริงที่เคยหลอกคนมาแล้ว** — task ยิงถูกต้องแต่เรียกไฟล์ที่ไม่ใช่ runner ของเรา → ขั้น 1.1 / 1.2 |
 | `LastTaskResult` ไม่ใช่ `0` และไม่ใช่ `267011` | ล้มเหลวก่อนถึงสคริปต์ — path ผิด, บัญชีที่รันไม่มีสิทธิ์, หรือ `Execute` ไม่มีไฟล์นั้น |
 
 ### ข้อความในบล็อก → สาเหตุ → วิธีแก้

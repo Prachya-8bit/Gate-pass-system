@@ -182,27 +182,32 @@ const claims = [
       })()
     : []),
   // นิยาม scheduled task ต้องอยู่ในรีโป ไม่ใช่ตั้งมือใน GUI ของเครื่อง sync
-  // เคส 2026-08-18: trigger บน host เป็น <Repetition><Interval>PT10M</Interval></Repetition>
-  // ที่ *ไม่มี* <Duration> ซึ่ง Windows ไม่รันเลย (LastTaskResult 267011 = ยังไม่เคยรัน)
-  // แต่ NextRunTime ยังเดินหน้าตามรอบให้เห็นเหมือนปกติ จึงไม่มีใครจับได้ 15 วัน
+  // ก่อนหน้านี้ไม่มีอะไรในรีโปบันทึก trigger, interval, IgnoreNew หรือบัญชีที่รันไว้เลย
+  // เครื่องถูก rebuild แล้วไม่มีอะไรให้กู้ และของที่ตั้งมือ drift จากรีโปได้แบบเงียบ
+  // (assert Duration ด้านล่างคือการบังคับให้ระบุ repetition ให้ครบ ไม่ใช่เพราะ trigger
+  //  ที่ไม่มี Duration พัง — ตัวที่อยู่บน host ยิงตรงเวลาอยู่ ดู README หัวข้อ cron)
   ['register-task.ps1 อยู่ใน repo (นิยาม scheduled task)',
     existsSync(join(ROOT, 'automation/register-task.ps1'))],
   ...(existsSync(join(ROOT, 'automation/register-task.ps1'))
     ? (() => {
         const s = read('automation/register-task.ps1');
+        // ตัดคอมเมนต์ออกก่อนตรวจเนื้อโค้ด ด้วยเหตุผลเดียวกับที่ตัด REM ใน run-sync.cmd:
+        // คอมเมนต์ในไฟล์นี้ *เล่าเรื่อง* บั๊กเก่า จึงพูดถึง `npm run sync` และ
+        // `Register-ScheduledTask` ตามเจตนา ถ้าไม่ตัดออก assert จะล้มจากถ้อยคำ ไม่ใช่จากโค้ด
+        const code = s.replace(/^\s*#.*$/gm, '');
         return [
-          // ตัวที่ทำให้บั๊กเดิมเกิดซ้ำไม่ได้ — ห้ามหลุด
+          // repetition ต้องระบุให้ครบ ไม่พึ่ง default ที่ไม่มีเอกสารรองรับ
           ['register-task.ps1 ตั้ง -RepetitionDuration คู่กับ -RepetitionInterval',
-            s.includes('-RepetitionDuration') && s.includes('-RepetitionInterval')],
+            code.includes('-RepetitionDuration') && code.includes('-RepetitionInterval')],
           // run-sync.ps1 พึ่ง "do not start a new instance" เป็นด่านแรกกัน browser ซ้อน
           ['register-task.ps1 ตั้ง MultipleInstances IgnoreNew',
-            /-MultipleInstances\s+IgnoreNew/.test(s)],
+            /-MultipleInstances\s+IgnoreNew/.test(code)],
           // ต้องเรียกผ่าน runner ที่ track ไว้ ไม่ใช่ npm ตรง ๆ (บทเรียนจาก run-sync.cmd)
           ['register-task.ps1 ชี้ไป run-sync.cmd และไม่เรียก npm เอง',
-            s.includes("'run-sync.cmd'") && !/npm\s+run/.test(s)],
+            code.includes("'run-sync.cmd'") && !/npm\s+run/.test(code)],
           // ห้ามมี scheduled task ที่สอง — lock/sync.log รับ runner สองตัวไม่ได้
           ['register-task.ps1 ลงทะเบียน task เดียว',
-            (s.match(/Register-ScheduledTask/g) || []).length === 1],
+            (code.match(/Register-ScheduledTask/g) || []).length === 1],
           // .ps1 ที่มีข้อความไทยต้องเป็น UTF-8 *with* BOM ไม่งั้น PowerShell 5.1
           // อ่านเป็น ANSI codepage (windows-874 บนเครื่องไทย) แล้วข้อความเพี้ยน
           ...['automation/run-sync.ps1', 'automation/register-task.ps1'].map((f) => [
