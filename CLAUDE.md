@@ -10,24 +10,26 @@ UI language: **Thai**. All copy, labels, and error messages stay in Thai.
 
 ## Current state
 
-`project/` contains a **fully working HTML/JSX prototype** exported from Claude Design. It runs in-browser with React via CDN + Babel. Data lives in `localStorage`. Auth is fake (any credentials pass).
+The Next.js app is **built and in production** on Vercel + Neon, and the Playwright RPA that files the EPRO forms runs on a Windows host in the plant. Work here is maintenance and extension, not a greenfield build.
 
-Do **not** treat these as production source files — they are the design spec. Match their visual output pixel-for-pixel when implementing.
+`UI/` holds the original **HTML/JSX prototype** exported from Claude Design. It runs in-browser with React via CDN + Babel, data lives in `localStorage`, and auth is fake (any credentials pass).
+
+Do **not** treat those as production source files, and never import from them — they are the design spec. Match their visual output pixel-for-pixel when implementing.
 
 Key prototype files:
-- `project/Gate Pass App.html` — app shell and entry point
-- `project/gp-atoms.jsx` — design tokens (`gDS`), shared components, localStorage utilities
-- `project/gp-auth.jsx` — login screen
-- `project/gp-form.jsx` — 3-step contractor registration form
-- `project/gp-admin.jsx` — admin dashboard with KPIs, company breakdown, records table, export
+- `UI/Gate Pass App.html` — app shell and entry point
+- `UI/gp-atoms.jsx` — design tokens (`gDS`), shared components, localStorage utilities
+- `UI/gp-auth.jsx` — login screen
+- `UI/gp-form.jsx` — 3-step contractor registration form
+- `UI/gp-admin.jsx` — admin dashboard with KPIs, company breakdown, records table, export
 
 ---
 
-## Target stack (next phase)
+## Stack
 
 | Layer | Choice |
 |-------|--------|
-| Framework | Next.js 14+ (App Router) |
+| Framework | Next.js 16 (App Router) · React 19 |
 | Language | TypeScript |
 | Database | PostgreSQL (Neon) via Prisma — dev ใช้ Neon branch "dev", prod ใช้ branch หลัก |
 | Auth | Custom: bcrypt password hash + HTTP-only JWT cookie |
@@ -36,7 +38,7 @@ Key prototype files:
 
 ---
 
-## Planned folder structure
+## Folder structure
 
 ```
 app/
@@ -88,6 +90,14 @@ automation/
   epro-sync-vehicle.mjs      → RPA ฝั่งคำขอนำรถ (FrmOperation.aspx)
   capture-page.mjs           → เก็บ selector จากหน้า EPRO ใหม่
   selectors.mjs              → selector ของทั้งสองฟอร์ม
+  register-task.ps1          → ลงทะเบียน/ซ่อม scheduled task (คนรัน ครั้งเดียวต่อเครื่อง)
+  run-sync.cmd               → entry point ที่ Task Scheduler เรียก (wrapper บาง ๆ)
+  run-sync.ps1               → lock + log + เรียกทั้งสองฝั่ง (logic ของจริง)
+  run-sync.sh                → ตัวเทียบเท่าสำหรับ cron บน Linux/WSL (host จริงเป็น Windows)
+scripts/
+  check-docs.mjs             → ตรวจว่าเอกสารยังตรงกับโค้ด (`npm run check:docs`)
+  check-rpa-env.mjs          → ตรวจ env บนเครื่อง sync โดยไม่พิมพ์ความลับ
+docs/                        → architecture, sync state machine, error reference, runbook
 ```
 
 ---
@@ -160,7 +170,7 @@ Shell widths: contractor = `max-width: 520px`, admin = `max-width: 880px`.
 ทุกค่าถอดมาจากฟอร์มจริง EPRO `reg/FrmOperation.aspx` (เมนู ยานพาหนะ → ปฏิบัติงานในโรงงาน) เก็บด้วย `automation/capture-page.mjs` — **เก็บเฉพาะฟิลด์ที่ EPRO มี** จึงไม่มี ประเภทรถ / เลขบัตรคนขับ / ชื่อโครงการ
 
 - **1 คำขอ = 1 คัน** ไม่มีปุ่ม "เพิ่ม" ในฟอร์ม EPRO เพราะห้ามมีผู้โดยสาร → ไม่ต้องจัดกลุ่ม `batchKey` = id ของแถว
-- **เวลาเริ่มต้องห่างจากปัจจุบันอย่างน้อย 1 ชั่วโมง** (`VEHICLE_LEAD_MINUTES`) — กฎของ EPRO ที่วัดตอน **RPA กด Save** ไม่ใช่ตอนผู้รับเหมากรอก ดังนั้นใบที่ขอชิดขั้นต่ำจะถูก EPRO ปฏิเสธได้เพราะ admin ยืนยัน + cron 15 นาทีกินเวลาเกิน กันไว้ 3 ชั้น: pre-flight ใน RPA (ไม่ส่งเลย รายงาน `permanent` เพราะ retry ยิ่งแย่) · ดัก dialog หลัง Save · แถบเตือนใบใกล้หมดเวลาบนการ์ด admin
+- **เวลาเริ่มต้องห่างจากปัจจุบันอย่างน้อย 1 ชั่วโมง** (`VEHICLE_LEAD_MINUTES`) — กฎของ EPRO ที่วัดตอน **RPA กด Save** ไม่ใช่ตอนผู้รับเหมากรอก ดังนั้นใบที่ขอชิดขั้นต่ำจะถูก EPRO ปฏิเสธได้เพราะ admin ยืนยัน + cron 10 นาทีกินเวลาเกิน กันไว้ 3 ชั้น: pre-flight ใน RPA (ไม่ส่งเลย รายงาน `permanent` เพราะ retry ยิ่งแย่) · ดัก dialog หลัง Save · แถบเตือนใบใกล้หมดเวลาบนการ์ด admin
 - **นาทีเลือกได้แค่ `00`/`15`/`30`/`45`** (`TIME_MINUTES`) — dropdown นาทีของ EPRO มี 59 ตัวเลือกไม่ใช่ 60 **ขาดค่า `10`** ถ้าปล่อยให้เลือก 10 แล้ว `selectOption` จะ throw ทุกครั้ง
 - **จังหวัด**: DB เก็บชื่อสะอาด แต่ value ของ `ddlProvience` ห่อด้วย **non-breaking space (U+00A0)** ทั้ง 77 ตัว RPA ห่อกลับด้วย `eproProvinceValue()` ใน `selectors.mjs`
 - **วันที่เป็น ค.ศ.** ยืนยันจากฟอร์มจริงแล้ว (`14/08/2026`) `toDMY()` ใช้ได้
@@ -226,7 +236,9 @@ node -e "const l=require('fs').readFileSync('.env.local','utf8').split(/\r?\n/).
 
 **เครื่องที่รัน RPA มี `.env` ของตัวเอง** (`automation/.env` — gitignored) `INTEGRATION_API_KEY` ในไฟล์นั้นต้องตรงกับที่ตั้งใน Vercel/`.env.local` ของ server ที่ `GATEPASS_URL` ชี้ไป ไม่ตรงจะได้ 401 ตอน claim
 
-**Legacy:** `Dockerfile`, `docker-compose.yml`, `Caddyfile`, `deploy.ps1` เป็นของแผน self-host เดิม (Docker + SQLite) — ใช้ไม่ได้แล้วหลัง schema เปลี่ยนเป็น PostgreSQL; เก็บไว้อ้างอิงเท่านั้น
+**Legacy:** `Dockerfile`, `docker-compose.yml`, `Caddyfile`, `deploy.ps1` เป็นของแผน self-host เดิม (Docker + SQLite) — **ใช้ไม่ได้แล้ว** เก็บไว้อ้างอิงเท่านั้น ทั้งสี่ไฟล์มี commit เดียวคือ initial commit และไม่ถูกแตะอีกเลย พังหลายชั้น: `docker-compose.yml` ตั้ง `DATABASE_URL: "file:..."` (SQLite) ซึ่งขัดกับ `migration_lock.toml` ที่เป็น postgresql · `Dockerfile` **พังตั้งแต่ตอน build** เพราะ copy `.next/standalone` แต่ `next.config.ts` ไม่ได้ตั้ง `output: 'standalone'` — ไม่ใช่แค่เรื่องฐานข้อมูล · `Caddyfile` proxy ไป `app:3000` ทั้งที่แอปรันพอร์ต 4009
+
+`docker-compose.dev.yml` เป็นอีกเรื่อง — เป็น Postgres สำหรับ dev ในเครื่อง ทำงานได้จริง แต่ตอนนี้ dev ใช้ Neon branch `dev` ผ่าน `.env.local` แทน จึงไม่มีใครใช้และไม่มีเอกสารไหนอ้างถึง
 
 ---
 

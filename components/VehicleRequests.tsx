@@ -3,8 +3,8 @@
 // การ์ดคำขอนำรถเข้าโรงงานบนหน้า admin
 //
 // ทำตามแบบ ManagerSummary: component ที่คืน GCard ก้อนเดียว จบในตัว fetch เอง
-// ไม่ยัดเข้า AdminFlow.tsx (962 บรรทัด) และไม่สร้าง component แท็บ ตามกฎบ้าน
-// ใน agent-prompt-user-list.md ที่ให้เพิ่ม section เป็น GCard อีกก้อนพร้อม <h3>
+// ไม่ยัดเข้า AdminFlow.tsx (962 บรรทัด) และไม่สร้าง component แท็บ — กฎบ้านคือ
+// section ใหม่บนหน้า admin ให้เป็น GCard อีกก้อนพร้อม <h3> ของตัวเอง
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import * as XLSX from 'xlsx';
