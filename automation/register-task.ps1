@@ -10,28 +10,24 @@
 # restore from, and a hand-edited task could drift from the repo with no way to
 # notice. Same class of bug as the untracked run-sync.cmd (2026-08-17).
 #
-# ── The bug this exists to prevent (found 2026-08-18) ───────────────────────────
-# The live task's trigger was:
+# The trigger it builds is the ordinary "daily at 00:00, repeat every N minutes for
+# a day" shape: an <Interval> together with an explicit <Duration>, which is what
+# the Task Scheduler GUI writes and what Register-ScheduledTask accepts without
+# argument. The host's hand-made task had an <Interval> with no <Duration>; that
+# one did fire (its 10-minute ticks are in logs/sync.log from 2026-08-18 14:15
+# onward), so a missing Duration is NOT a known-broken configuration — the
+# post-condition below simply refuses to leave the repetition half-specified,
+# because an omitted Duration means relying on undocumented default behaviour for
+# the one setting that decides whether the sync runs at all.
 #
-#     <Repetition><Interval>PT10M</Interval></Repetition>     <-- no <Duration>
-#
-# A Repetition with an Interval but no Duration is silently inert. Measured
-# directly with two tasks identical except for that one element:
-#
-#   with <Duration>P1D</Duration>  ->  LastTaskResult 0       (ran, on schedule)
-#   without <Duration>             ->  LastTaskResult 267011  (SCHED_S_TASK_HAS_NOT_RUN)
-#
-# What makes it so hard to spot: BOTH tasks report a healthy-looking NextRunTime
-# on the correct interval boundary. Task Scheduler keeps advancing NextRunTime for
-# a repetition it never actually runs, so the GUI, Get-ScheduledTaskInfo, and the
-# Triggers tab all look right. The only tell is LastTaskResult/LastRunTime never
-# moving — and Start-ScheduledTask bypasses the trigger, so a manual test passes
-# and appears to confirm the schedule is fine.
-#
-# The result was that BOTH syncs never ran on a timer. It presented as a
-# vehicle-only outage because the vehicle side has epro's 60-minute lead-time rule
-# (VEHICLE_LEAD_MINUTES), so its requests aged out of their window, while worker
-# records merely arrived whenever someone ran the sync by hand.
+# For the record, since an earlier version of this comment claimed otherwise: the
+# 2026-08-18 outage (vehicle side silent, worker side fine, no banners in
+# sync.log for two weeks) was NOT a trigger problem. The task was firing on time
+# the whole while; it was invoking the old untracked run-sync.cmd, which called
+# `npm run sync` directly and so never reached the vehicle sync and never wrote a
+# banner. Tracking run-sync.cmd (commit d6e3a6d) is what fixed it, and it took
+# effect when the sync host pulled. Diagnose from the banners in sync.log, not
+# from the trigger.
 #
 # This registers ONE task on purpose. Do not add a second task for the vehicle
 # side — see README.md ("ห้ามแยกเป็น cron entry / scheduled task ที่สอง"): the two
@@ -41,11 +37,12 @@
 param(
     [string]$TaskName = 'GatePass EPRO Sync',
 
-    # Docs across the repo (architecture.md, error-reference.md, CLAUDE.md, and the
-    # header of run-sync.ps1) all state a 15-minute tick, and the 60-minute
-    # lead-time reasoning is budgeted against it. Change both together or not at all.
+    # 10 minutes is what the sync host has actually been running (visible in
+    # logs/sync.log). Docs elsewhere say 15 — the tick was tightened at some point
+    # and the prose was not updated; the vehicle side's 60-minute lead-time budget
+    # only gets safer as this gets smaller, so the docs are conservative, not wrong.
     [ValidateRange(1, 1440)]
-    [int]$IntervalMinutes = 15,
+    [int]$IntervalMinutes = 10,
 
     # The task must run whether or not anyone is logged on, so it needs a stored
     # password. Pass -Credential to skip the prompt (e.g. an unattended rebuild).
@@ -122,15 +119,14 @@ Register-ScheduledTask -TaskName $TaskName `
     -Force -ErrorAction Stop | Out-Null
 
 # ── Post-condition ─────────────────────────────────────────────────────────────
-# The whole point of this script is that one XML element, so it verifies its own
-# work rather than trusting that the registration did what was asked. Nothing
-# claims success before these pass.
+# Verify the registration rather than trusting it. Nothing claims success until
+# these pass.
 $xml = Export-ScheduledTask -TaskName $TaskName -ErrorAction Stop
-# Scoped to inside <Repetition> on purpose: the broken task DID contain a
-# <Duration> — under <IdleSettings> — so a plain "does the XML say Duration" check
-# would have passed on the exact config this script exists to prevent.
+# Scoped to inside <Repetition> on purpose: every task carries an unrelated
+# <Duration> under <IdleSettings>, so a plain "does the XML say Duration" check
+# would pass on a repetition that has none.
 if ($xml -notmatch '(?s)<Repetition>(?:(?!</Repetition>).)*<Duration>') {
-    throw "trigger ที่ลงทะเบียนไม่มี <Duration> ใน <Repetition> — task จะไม่รันตามรอบเลย ห้ามปล่อยไว้"
+    throw "trigger ที่ลงทะเบียนมี <Interval> แต่ไม่มี <Duration> ใน <Repetition> — ระบุให้ครบ อย่าพึ่งค่า default ที่ไม่มีเอกสารรองรับ"
 }
 
 $info = Get-ScheduledTask -TaskName $TaskName -ErrorAction Stop | Get-ScheduledTaskInfo
@@ -138,8 +134,8 @@ Write-Host "ลงทะเบียน task '$TaskName' แล้ว — ทุ
 Write-Host "NextRunTime : $($info.NextRunTime)"
 Write-Host "LastRunTime : $($info.LastRunTime)   LastTaskResult: $($info.LastTaskResult)"
 Write-Host ""
-Write-Host "ยืนยันว่าตารางเวลาทำงานจริงโดย **รอให้ถึงรอบเอง** ห้ามใช้ Start-ScheduledTask"
-Write-Host "เพราะมันข้าม trigger จึงผ่านได้แม้ trigger พัง — และ NextRunTime ก็ดูปกติได้ทั้งที่ไม่รัน"
-Write-Host "ที่เชื่อได้คือ LastTaskResult ขยับจาก 267011 (ยังไม่เคยรัน) เป็น 0 เองโดยไม่ต้องสั่ง:"
-Write-Host "  Get-ScheduledTask -TaskName `"$TaskName`" | Get-ScheduledTaskInfo"
+Write-Host "ยืนยันโดย **รอให้ถึงรอบเอง** ห้ามใช้ Start-ScheduledTask เพราะมันข้าม trigger"
+Write-Host "หลักฐานที่เชื่อได้คือ banner ใน sync.log ที่โผล่เองทุก $IntervalMinutes นาที —"
+Write-Host "task ยิงตรงเวลาแต่ไม่มี banner เลยก็เกิดขึ้นได้ (เคส run-sync.cmd เก่าที่ untracked)"
 Write-Host "  Get-Content .\logs\sync.log -Tail 40"
+Write-Host "  Get-Content .\logs\vehicle.log -Tail 20"
