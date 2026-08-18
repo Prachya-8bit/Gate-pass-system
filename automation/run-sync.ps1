@@ -17,15 +17,26 @@
 # so a "ข้ามรอบนี้" line from an overlapping attempt can appear just above the
 # block it was skipping. Compare the timestamps, not the line order.
 #
+# Each side also gets its own log — logs\worker.log and logs\vehicle.log — so one
+# side can be followed without the other's output interleaved:
+#   Get-Content logs\vehicle.log -Tail 40
+# sync.log still holds both, in order, and stays the file to read when the
+# question is "what happened this tick". The per-side files exist so that
+# following one side does NOT require a second scheduled task: two runners would
+# fight over sync.log's write handle (opened FileShare.Read here) and over the
+# single epro session the lock protects.
+#
 # Runs headless (no window).
 
 $ErrorActionPreference = 'Stop'
 
-$dir      = $PSScriptRoot
-$logDir   = Join-Path $dir 'logs'
-$log      = Join-Path $logDir 'sync.log'
-$stateDir = Join-Path $dir 'state'
-$lockPath = Join-Path $stateDir 'sync.lock'
+$dir        = $PSScriptRoot
+$logDir     = Join-Path $dir 'logs'
+$log        = Join-Path $logDir 'sync.log'
+$logWorker  = Join-Path $logDir 'worker.log'
+$logVehicle = Join-Path $logDir 'vehicle.log'
+$stateDir   = Join-Path $dir 'state'
+$lockPath   = Join-Path $stateDir 'sync.lock'
 
 New-Item -ItemType Directory -Force -Path $logDir, $stateDir | Out-Null
 
@@ -35,13 +46,15 @@ New-Item -ItemType Directory -Force -Path $logDir, $stateDir | Out-Null
 # it as the ANSI codepage (windows-874 on a Thai system) and mangles the Thai.
 $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
 
-function Append-Bytes([byte[]]$bytes) {
-    $fs = [System.IO.File]::Open($log, [System.IO.FileMode]::Append,
+function Append-BytesTo([string]$path, [byte[]]$bytes) {
+    $fs = [System.IO.File]::Open($path, [System.IO.FileMode]::Append,
                                  [System.IO.FileAccess]::Write,
                                  [System.IO.FileShare]::Read)
     try { $fs.Write($bytes, 0, $bytes.Length) } finally { $fs.Close() }
 }
-function Write-Log([string]$text) { Append-Bytes $utf8NoBom.GetBytes("$text`n") }
+function Append-Bytes([byte[]]$bytes) { Append-BytesTo $log $bytes }
+function Write-LogTo([string]$path, [string]$text) { Append-BytesTo $path $utf8NoBom.GetBytes("$text`n") }
+function Write-Log([string]$text) { Write-LogTo $log $text }
 function Stamp { Get-Date -Format 'yyyy-MM-dd HH:mm:ss' }
 
 # Task Scheduler hands a task a much narrower PATH than an interactive shell, and
@@ -80,7 +93,11 @@ try {
     exit 0
 }
 
-$runLog = Join-Path $logDir ("sync-run-{0}.tmp" -f (Get-Date -Format 'yyyyMMdd-HHmmss-fff'))
+# One temp file per side, so each side's output can be routed to its own log as
+# well as to the combined one. Same timestamp in both names ties them to one tick.
+$runStamp      = Get-Date -Format 'yyyyMMdd-HHmmss-fff'
+$runLogWorker  = Join-Path $logDir ("sync-run-worker-{0}.tmp"  -f $runStamp)
+$runLogVehicle = Join-Path $logDir ("sync-run-vehicle-{0}.tmp" -f $runStamp)
 $started = Stamp
 $rc = 1
 
@@ -94,29 +111,45 @@ try {
     # Let cmd.exe do the redirection: PowerShell 5.1 wraps a native command's
     # stderr in ErrorRecord objects, which would mangle the log.
     #
-    # Both sides run inside the one lock, worker first. Appending (>>) for the
-    # second run keeps the whole tick in a single $runLog, so the log block stays
-    # contiguous and sync.log is still opened only once at the end.
+    # Both sides run inside the one lock, worker first.
     #
     # Vehicle runs second so a problem there cannot delay the worker sync, which
     # is the higher-value path. Do NOT split these into two scheduled tasks — the
-    # lock exists to stop two browsers logging into the same epro account at once.
-    & cmd.exe /c "npm run sync > `"$runLog`" 2>&1"
+    # lock exists to stop two browsers logging into the same epro account at once,
+    # and sync.log is opened FileShare.Read so a second runner appending to it
+    # throws outright. Read logs\worker.log / logs\vehicle.log instead.
+    & cmd.exe /c "npm run sync > `"$runLogWorker`" 2>&1"
     $rcWorker = $LASTEXITCODE
 
-    & cmd.exe /c "npm run sync:vehicle >> `"$runLog`" 2>&1"
+    & cmd.exe /c "npm run sync:vehicle > `"$runLogVehicle`" 2>&1"
     $rcVehicle = $LASTEXITCODE
 
     # Report whichever side failed first; a vehicle failure does not invalidate a
     # worker run that already completed.
     $rc = if ($rcWorker -ne 0) { $rcWorker } else { $rcVehicle }
 } finally {
-    Write-Log "===== $started  เริ่ม sync ====="
-    if (Test-Path $runLog) {
-        # Byte-for-byte passthrough so the UTF-8 from node survives untouched.
-        Append-Bytes ([System.IO.File]::ReadAllBytes($runLog))
-        Remove-Item $runLog -Force -ErrorAction SilentlyContinue
+    # Copies one side's captured output into the combined log and into that side's
+    # own log, then drops the temp file.
+    #
+    # The per-side banner deliberately avoids the words "จบ sync" — the runbook
+    # reads "จบ sync (exit N)" as the signature of the pre-PR#4 script that never
+    # called the vehicle side, so reusing it here would fake that diagnosis.
+    function Flush-Side([string]$title, [string]$tmp, [string]$sideLog, [int]$sideRc) {
+        Write-Log "----- $title -----"
+        Write-LogTo $sideLog "===== $started  เริ่ม $title ====="
+        if (Test-Path $tmp) {
+            # Byte-for-byte passthrough so the UTF-8 from node survives untouched.
+            $bytes = [System.IO.File]::ReadAllBytes($tmp)
+            Append-Bytes $bytes
+            Append-BytesTo $sideLog $bytes
+            Remove-Item $tmp -Force -ErrorAction SilentlyContinue
+        }
+        Write-LogTo $sideLog "===== $(Stamp)  $title exit $sideRc ====="
     }
+
+    Write-Log "===== $started  เริ่ม sync ====="
+    Flush-Side 'ฝั่งแรงงาน' $runLogWorker  $logWorker  $rcWorker
+    Flush-Side 'ฝั่งรถ'     $runLogVehicle $logVehicle $rcVehicle
     Write-Log "===== $(Stamp)  จบ sync (แรงงาน exit $rcWorker, รถ exit $rcVehicle) ====="
     $lock.Close()
 }

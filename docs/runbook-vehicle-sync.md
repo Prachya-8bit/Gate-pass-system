@@ -13,6 +13,12 @@ task เรียก runner ตัวที่รู้จักฝั่งร�
 → ข้ามไป **ขั้น 1 ได้เลย** เพราะ manual ที่ผ่านตัด env, API key, `GATEPASS_URL`, EPRO,
 selector และการมีอยู่ของโค้ดออกทั้งหมด เหลือแค่ "task เรียกอะไร" อย่างเดียว
 
+> ⚠️ **ถ้าดูอีกทีแล้วพบว่า _ทั้งสองฝั่ง_ ไม่ได้ทำงานตามรอบ ไม่ใช่แค่ฝั่งรถ** → ข้ามไป **ขั้น 1.4** เลย
+> อาการจะดูเหมือนพังฝั่งรถฝ่ายเดียวเพราะฝั่งรถมีกฎ lead-time 60 นาทีของ EPRO ใบจึงหมดอายุ
+> ระหว่างรอ ส่วนฝั่งแรงงานแค่ "มาช้า" ซึ่งไม่มีใครสังเกต และถ้ามีคนเคยสั่ง `npm run sync`
+> ด้วยมือ ฝั่งแรงงานจะยิ่งดูเหมือนปกติ **เกณฑ์ที่ใช้แยก: `logs/sync.log` มีบล็อกใหม่
+> โผล่เองทุกช่วง repetition หรือไม่** ถ้าไม่มีเลย ปัญหาไม่ได้อยู่ที่ฝั่งใดฝั่งหนึ่ง
+
 | | |
 |---|---|
 | ทำที่ | **เครื่อง server ที่รัน Task Scheduler** (ไม่ใช่เครื่องพัฒนา) |
@@ -108,17 +114,71 @@ Start-ScheduledTask -TaskName "<ชื่อ task จากข้อ 1.1>"
 Get-Content .\logs\sync.log -Tail 40
 ```
 
+> ⚠️ **`Start-ScheduledTask` ข้าม trigger** มันพิสูจน์แค่ว่า action (`run-sync.cmd` →
+> `run-sync.ps1` → npm) ทำงานได้ **ไม่ได้พิสูจน์ว่าตารางเวลาทำงาน** ถ้าผ่านตรงนี้แล้วรอบ
+> ที่ตั้งเวลายังเงียบ ให้ไปขั้น 1.4
+
+### ขั้น 1.4 — trigger ตั้งไว้แต่ไม่รันเลย (repetition ขาด Duration)
+
+เคสจริง 2026-08-18: task ชี้ไฟล์ถูก ไฟล์ใหม่ครบ `State` = `Ready` `LastTaskResult` = `0`
+`NextRunTime` ก็ดูปกติ แต่ **task ไม่เคยรันเองเลยตั้งแต่สร้าง** เพราะ trigger เป็น
+
+```xml
+<Repetition><Interval>PT10M</Interval></Repetition>   <!-- ไม่มี <Duration> -->
+```
+
+`<Interval>` ที่ไม่มี `<Duration>` คู่กันจะ**ไม่ถูกรัน** วัดเทียบสองตัวที่ต่างกันแค่บรรทัดนี้:
+
+| trigger | ผล |
+|---|---|
+| มี `<Duration>P1D</Duration>` | `LastTaskResult` = `0` — รันตามรอบจริง |
+| ไม่มี `<Duration>` | `LastTaskResult` = `267011` (`SCHED_S_TASK_HAS_NOT_RUN`) — ไม่รันเลย |
+
+**สิ่งที่ทำให้จับยาก: ทั้งสองแบบรายงาน `NextRunTime` ตรงตามรอบเหมือนกัน** Task Scheduler
+เดิน `NextRunTime` ให้ต่อไปแม้เป็น repetition ที่มันไม่รัน ทั้งหน้า GUI, tab Triggers และ
+`Get-ScheduledTaskInfo` จึงดูปกติหมด ตัวที่ฟ้องคือ **`LastRunTime`/`LastTaskResult` ที่ไม่ขยับ**
+
+ตรวจ:
+```powershell
+Export-ScheduledTask -TaskName "<ชื่อ task>"
+```
+ใน `<Repetition>` **ต้องมี `<Duration>`** ถ้ามี `<Interval>` — และดูให้ตรงว่าเป็น `<Duration>`
+ที่อยู่ใน `<Repetition>` ไม่ใช่ตัวใน `<IdleSettings>` (task ที่พังก็มี `<Duration>` ใต้
+`<IdleSettings>` อยู่แล้ว การ grep หาคำว่า `Duration` เฉย ๆ จึงผ่านทั้งที่พัง)
+
+แก้ด้วยการลงทะเบียนใหม่จากนิยามที่อยู่ในรีโป (ต้อง **Run as Administrator**):
+```powershell
+cd <WorkDir จากข้อ 1.1>
+.\register-task.ps1                      # ทุก 15 นาที (ค่าเริ่มต้น)
+```
+สคริปต์ตรวจผลงานตัวเองด้วย `Export-ScheduledTask` แล้ว throw ถ้า `<Duration>` ไม่ติด
+จึงไม่มีทางลงทะเบียน trigger ที่พังแบบเดิมได้อีก
+
+ยืนยันว่า**หายจริง** ต้องปล่อยให้ถึงรอบเอง ห้ามใช้ `Start-ScheduledTask`:
+```powershell
+Get-ScheduledTask -TaskName "<ชื่อ task>" | Get-ScheduledTaskInfo
+```
+`LastTaskResult` ต้องเปลี่ยนจาก `267011` เป็น `0` เอง และ `logs\sync.log` ต้องมีบล็อกใหม่
+โผล่เองทุก ~15 นาที
+
 ---
 
 ## ขั้น 2 — อ่าน log บล็อกล่าสุด
 
 ```powershell
 cd <checkout บน server>\automation
-Get-Content logs\sync.log -Tail 80
+Get-Content logs\sync.log -Tail 80      # ทั้งสองฝั่ง เรียงตามเวลา
+Get-Content logs\vehicle.log -Tail 40   # ฝั่งรถล้วน
+Get-Content logs\worker.log -Tail 40    # ฝั่งแรงงานล้วน
 ```
 
-> ถ้าสั่ง `npm run sync:vehicle` ด้วยมือ **ผลจะออกหน้าจอ ไม่ลง `sync.log`** — ให้ก๊อปข้อความบนจอมาดูแทน
-> `sync.log` มีแค่รอบที่ Task Scheduler รัน
+`sync.log` มีทั้งสองฝั่งคั่นด้วย `----- ฝั่งแรงงาน -----` / `----- ฝั่งรถ -----` ส่วน
+`worker.log` กับ `vehicle.log` แยกไว้ให้ตามอ่านฝั่งเดียวได้โดยไม่มี output อีกฝั่งปนมา
+(ไฟล์แยกสองตัวนี้มีขึ้นเพื่อ**ไม่ต้อง**สร้าง scheduled task ที่สอง — runner สองตัวจะแย่ง
+write handle ของ `sync.log` และแย่ง session EPRO กัน)
+
+> ถ้าสั่ง `npm run sync:vehicle` ด้วยมือ **ผลจะออกหน้าจอ ไม่ลงไฟล์ log ใด ๆ** — ให้ก๊อปข้อความบนจอมาดูแทน
+> ไฟล์ log มีแค่รอบที่ Task Scheduler รัน
 
 ### บรรทัดปิดของบล็อกบอกอะไร
 
@@ -137,9 +197,13 @@ Get-ScheduledTask -TaskName "<ชื่อ task>" | Get-ScheduledTaskInfo
 
 | ผล | แปลว่า |
 |---|---|
-| `LastRunTime` เก่ามาก / ว่าง | trigger ไม่ทำงาน — เปิด Task Scheduler ดู tab Triggers |
+| `LastTaskResult` = `267011` | `SCHED_S_TASK_HAS_NOT_RUN` — **ยังไม่เคยรันเลย** มักเป็น repetition ที่ขาด `<Duration>` → **ขั้น 1.4** |
+| `LastRunTime` เก่ามาก / ว่าง | trigger ไม่ทำงาน → **ขั้น 1.4** |
+| `LastRunTime` ตรงกับเวลาที่เคยสั่ง `Start-ScheduledTask` ด้วยมือเท่านั้น | trigger ไม่เคยยิงเอง manual run ปิดบังไว้ → **ขั้น 1.4** |
+| `NextRunTime` ห่างเป็นหลักชั่วโมง ทั้งที่ควรทุก 15 นาที | trigger ไม่ได้ตั้ง repetition ไว้ → **ขั้น 1.4** |
+| `NextRunTime` ดูถูกต้อง แต่ `LastRunTime` ไม่ขยับ | **ค่านี้เชื่อไม่ได้** — Task Scheduler เดิน `NextRunTime` ให้แม้ repetition ที่ไม่รัน → **ขั้น 1.4** |
 | `LastTaskResult` = `0` แต่ log ไม่ขยับ | task รันสิ่งที่ไม่ใช่ runner ของเรา → ขั้น 1.1 |
-| `LastTaskResult` ไม่ใช่ `0` | ล้มเหลวก่อนถึงสคริปต์ — path ผิด, บัญชีที่รันไม่มีสิทธิ์, หรือ `Execute` ไม่มีไฟล์นั้น |
+| `LastTaskResult` ไม่ใช่ `0` และไม่ใช่ `267011` | ล้มเหลวก่อนถึงสคริปต์ — path ผิด, บัญชีที่รันไม่มีสิทธิ์, หรือ `Execute` ไม่มีไฟล์นั้น |
 
 ### ข้อความในบล็อก → สาเหตุ → วิธีแก้
 
@@ -267,6 +331,9 @@ git status --short                              # ไฟล์ที่แก้
 Select-String -Path .\run-sync.cmd, .\run-sync.ps1 -Pattern "npm run sync|run-sync.ps1"
 node ..\scripts\check-rpa-env.mjs
 Get-Content .\logs\sync.log -Tail 80
+
+# นิยาม trigger ตัวจริง (ขั้น 1.4 — <Repetition> ต้องมี <Duration>)
+Export-ScheduledTask -TaskName "<ชื่อ task>"
 Get-ChildItem .\screenshots\vehicle-* -ErrorAction SilentlyContinue |
   Sort-Object LastWriteTime -Descending | Select-Object -First 3 Name, LastWriteTime
 ```

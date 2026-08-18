@@ -69,9 +69,21 @@ npm run sync:vehicle       # รันจริง
 
 | ไฟล์ | ใครเรียก | หน้าที่ |
 |---|---|---|
+| `register-task.ps1` | **คน** (ครั้งเดียว ตอนตั้งเครื่องหรือตอนซ่อม) | นิยาม scheduled task — trigger, interval, `IgnoreNew`, บัญชีที่รัน |
 | `run-sync.cmd` | **Windows Task Scheduler** | wrapper บาง ๆ → `powershell -File run-sync.ps1` เท่านั้น ไม่มี logic |
 | `run-sync.ps1` | `run-sync.cmd` | lock + log + เรียกทั้งสองฝั่ง (ของจริงอยู่ที่นี่) |
 | `run-sync.sh` | cron บน WSL/Linux | เทียบเท่า `.ps1` ใช้ `flock` |
+
+`run-sync.ps1` เขียน log สามไฟล์: `logs/sync.log` (ทั้งสองฝั่งเรียงตามเวลา) กับ
+`logs/worker.log` และ `logs/vehicle.log` สำหรับตามอ่านฝั่งเดียว — ไฟล์แยกมีขึ้นเพื่อ
+**ไม่ต้อง**สร้าง scheduled task ที่สอง (ดูคำเตือนด้านล่าง)
+
+⚠️ **นิยาม task ต้องมาจาก `register-task.ps1` ไม่ใช่ตั้งมือใน GUI** เดิมมันอยู่แค่ในหน้า GUI
+ของเครื่อง sync ไม่มีอะไรในรีโปบันทึกไว้ ผลคือ 2026-08-18 พบว่า trigger เป็น
+`<Repetition><Interval>PT10M</Interval></Repetition>` ที่**ไม่มี `<Duration>`** ซึ่ง Windows
+ไม่รันเลย (`LastTaskResult` = `267011`) แต่ `NextRunTime` ยังเดินตามรอบให้เห็นเหมือนปกติ
+จึงไม่มีใครจับได้ — ทั้งสองฝั่งไม่ได้ทำงานตามรอบ แต่ดูเหมือนพังแค่ฝั่งรถเพราะกฎ lead-time
+60 นาที `npm run check:docs` มี assert กันเรื่องนี้ · วิธีไล่ดู `docs/runbook-vehicle-sync.md` ขั้น 1.4
 
 ⚠️ **`run-sync.cmd` ต้องอยู่ใน git** เดิมมันอยู่แต่บนเครื่อง sync แบบ untracked และเรียก
 `npm run sync` ตรง ๆ ผลคือตอนเพิ่มฝั่งรถเข้า `run-sync.ps1` (PR #4) **`git pull` ไม่เปลี่ยนอะไร
