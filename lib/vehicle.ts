@@ -94,7 +94,7 @@ export const VEHICLE_LEAD_MINUTES = 60;
 
 /**
  * เตือนแบบไม่บล็อกเมื่อเวลาเริ่มเหลือน้อยกว่านี้ — กฎ EPRO วัดตอน RPA กดบันทึก
- * ไม่ใช่ตอนผู้รับเหมากรอก ระหว่างนั้นมี admin ยืนยัน + cron 15 นาที
+ * ไม่ใช่ตอนผู้รับเหมากรอก ระหว่างนั้นมี admin ยืนยัน + cron 10 นาที
  */
 export const VEHICLE_RISKY_LEAD_MINUTES = 120;
 

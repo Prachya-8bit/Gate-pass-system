@@ -20,7 +20,7 @@ graph TB
     A["🛡️ Admin<br/>(เจ้าหน้าที่ความปลอดภัย)"]
     GP["<b>SYS Gate Pass</b><br/>Next.js บน Vercel"]
     DB[("Neon PostgreSQL<br/>branch: main / dev")]
-    RPA["🤖 RPA Worker<br/>Playwright บนเครื่อง WSL ในโรงงาน"]
+    RPA["🤖 RPA Worker<br/>Playwright บนเครื่อง Windows ในโรงงาน"]
     EPRO["🏭 EPRO<br/>eprocurement.syssteel.com<br/>(ASP.NET · ระบบภายนอก)"]
 
     C -->|"ลงทะเบียนคนงาน<br/>HTTPS + JWT cookie"| GP
@@ -62,8 +62,8 @@ graph LR
         T5[("VehicleRequest")]
     end
 
-    subgraph plant["เครื่องในโรงงาน (WSL)"]
-        CRON["cron ทุก 15 นาที<br/>run-sync.sh + flock (lock เดียว)"]
+    subgraph plant["เครื่องในโรงงาน (Windows)"]
+        CRON["Task Scheduler ทุก 10 นาที<br/>run-sync.cmd → run-sync.ps1 + lock เดียว"]
         SYNC["epro-sync.mjs<br/>Playwright chromium (headless)"]
         SYNCV["epro-sync-vehicle.mjs<br/>รันต่อจากตัวบน"]
         SEL["selectors.mjs<br/>regForm + vehicleForm"]
@@ -236,7 +236,7 @@ sequenceDiagram
     A->>GP: PATCH /api/records/[id] {action:'confirm'}
     GP->>DB: PENDING → CONFIRMED (guard สถานะต้นทาง) + SyncLog
 
-    Note over R: cron ทุก 15 นาที · flock กัน browser ซ้อน
+    Note over R: Task Scheduler ทุก 10 นาที · lock กัน browser ซ้อน
     R->>GP: POST /api/integration/claim {runId}
     GP->>DB: reap SYNCING ที่ค้าง > 30 นาที → NEEDS_REVIEW
     GP->>DB: updateMany WHERE status IN (CONFIRMED,FAILED)<br/>SET SYNCING (compare-and-set)
@@ -327,12 +327,12 @@ graph LR
     NP[("Neon branch หลัก<br/>= production")]
     ND[("Neon branch dev")]
     LOCAL["เครื่อง dev<br/>npm run dev :4009"]
-    WSL["เครื่องโรงงาน (WSL)<br/>crontab ทุก 15 นาที"]
+    SYNCHOST["เครื่องโรงงาน (Windows)<br/>Task Scheduler ทุก 10 นาที"]
 
     GH -->|push = deploy| V
     V -->|"buildCommand:<br/>prisma generate → migrate deploy → next build"| NP
     LOCAL --> ND
-    WSL -->|HTTPS| V
+    SYNCHOST -->|HTTPS| V
 ```
 
 | สภาพแวดล้อม | แอป | ฐานข้อมูล | RPA |
@@ -342,7 +342,7 @@ graph LR
 
 - **Migration** ถูก apply อัตโนมัติทุก deploy ผ่าน `vercel.json` → deploy ที่ migration พังจะไม่ขึ้น production
 - **Seed admin** รันมือครั้งเดียวจากเครื่อง dev ชี้ Neon direct connection พร้อม `SEED_ADMIN_PASSWORD`
-- **Legacy:** `Dockerfile`, `docker-compose.yml`, `Caddyfile`, `deploy.ps1` เป็นของแผน self-host เดิม (Docker + SQLite) — ใช้ไม่ได้แล้วหลังย้ายเป็น PostgreSQL เก็บไว้อ้างอิงเท่านั้น
+- **Legacy:** `Dockerfile`, `docker-compose.yml`, `Caddyfile`, `deploy.ps1` เป็นของแผน self-host เดิม (Docker + SQLite) — **ใช้ไม่ได้แล้ว** เก็บไว้อ้างอิงเท่านั้น มี commit เดียวคือ initial commit · `Dockerfile` พังตั้งแต่ build (copy `.next/standalone` แต่ `next.config.ts` ไม่ได้ตั้ง `output: 'standalone'`) ไม่ใช่แค่เรื่องฐานข้อมูล · `docker-compose.dev.yml` เป็น Postgres สำหรับ dev ที่ยังทำงานได้ แต่ไม่มีใครใช้แล้วเพราะ dev ชี้ Neon branch `dev`
 
 ---
 
@@ -358,7 +358,7 @@ graph LR
 | **RPA ตายหลังกดบันทึก** | 🔶 ค้าง `SYNCING` → reaper 30 นาที → `NEEDS_REVIEW` | ✅ เปิด EPRO ดูว่ามีใบงานไหม แล้วกด "ส่งแล้ว"/"ยังไม่ส่ง" |
 | EPRO เปลี่ยนหน้า/selector หาย | 🔶 `FAILED` + `errorClass: permanent` → ไม่ retry | ✅ แก้ `selectors.mjs` |
 | รหัสผ่าน EPRO หมดอายุ | login พัง · ยังไม่ได้ claim อะไร → ไม่มีสถานะเสียหาย | ✅ แก้ `automation/.env` |
-| เครื่อง WSL ดับ | ไม่มีอะไรถูกส่ง · ข้อมูลอยู่ครบใน DB | ✅ เปิดเครื่อง — cron ทำงานต่อเอง |
+| เครื่อง sync ดับ | ไม่มีอะไรถูกส่ง · ข้อมูลอยู่ครบใน DB | ✅ เปิดเครื่อง — Task Scheduler ทำงานต่อเอง (`StartWhenAvailable` ตามรอบที่พลาด) |
 | sync รอบก่อนยังไม่จบ | `flock` ข้ามรอบนี้ ไม่เปิด browser ซ้อน | — |
 | RPA 2 ตัวแย่ง job | compare-and-set ที่ DB — ตัวที่ช้ากว่าได้ `null` | — |
 
