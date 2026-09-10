@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
 import { getSession } from '@/lib/auth';
 import { ensureCompanyExists } from '@/lib/companies';
+import { logTransition } from '@/lib/sync';
 import { VEHICLE_SELECT } from '@/lib/vehicle';
 import { normalizePlate, validateVehicleInput, type VehicleInput } from '@/lib/vehicle-validate';
 
@@ -45,24 +46,43 @@ export async function POST(request: NextRequest) {
   // canonicalize ชื่อบริษัทเหมือนฝั่ง record เพื่อให้ตัวกรอง/สรุปของ admin ไม่แตกกลุ่ม
   const company = await ensureCompanyExists(body.company!.trim());
 
-  const created = await prisma.vehicleRequest.create({
-    data: {
-      plant: body.plant!,
-      company,
-      driverName: body.driverName!.trim(),
-      plateNumber: normalizePlate(body.plateNumber!),
-      plateProvince: body.plateProvince!,
-      location: body.location!.trim(),
-      reason: body.reason!.trim(),
-      contactTel: body.contactTel?.trim() || null,
-      startDate: body.startDate!,
-      startTime: body.startTime!,
-      endDate: body.endDate!,
-      endTime: body.endTime!,
-      createdAt: new Date().toISOString().slice(0, 10),
-      createdBy: session.id,
-    },
-    select: { id: true },
+  // ตัดขั้นตอนการยืนยันโดย admin ออก — คำขอที่ผู้รับเหมาส่งเข้ามาให้เป็น CONFIRMED
+  // (รอส่ง EPRO) ทันที การส่งฟอร์มของผู้รับเหมาถือเป็นการยืนยันในตัว
+  // ทำใน transaction เดียวเพื่อให้แถวกับ SyncLog เกิดพร้อมกันเสมอ (parity กับ PATCH)
+  const now = new Date();
+  const created = await prisma.$transaction(async (tx) => {
+    const row = await tx.vehicleRequest.create({
+      data: {
+        plant: body.plant!,
+        company,
+        driverName: body.driverName!.trim(),
+        plateNumber: normalizePlate(body.plateNumber!),
+        plateProvince: body.plateProvince!,
+        location: body.location!.trim(),
+        reason: body.reason!.trim(),
+        contactTel: body.contactTel?.trim() || null,
+        startDate: body.startDate!,
+        startTime: body.startTime!,
+        endDate: body.endDate!,
+        endTime: body.endTime!,
+        createdAt: now.toISOString().slice(0, 10),
+        createdBy: session.id,
+        syncStatus: 'CONFIRMED',
+        confirmedAt: now,
+        confirmedBy: session.id,
+      },
+      select: { id: true },
+    });
+
+    await logTransition(tx, {
+      recordIds: [row.id],
+      to: 'CONFIRMED',
+      from: null,
+      actor: `contractor:${session.id}`,
+      kind: 'vehicle',
+    });
+
+    return row;
   });
 
   return NextResponse.json({ success: true, id: created.id }, { status: 201 });
