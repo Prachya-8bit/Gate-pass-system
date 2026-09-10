@@ -6,7 +6,7 @@
 // ไม่ยัดเข้า AdminFlow.tsx (962 บรรทัด) และไม่สร้าง component แท็บ — กฎบ้านคือ
 // section ใหม่บนหน้า admin ให้เป็น GCard อีกก้อนพร้อม <h3> ของตัวเอง
 
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import * as XLSX from 'xlsx';
 import { gDS, matchesCompanyFilter } from '@/lib/constants';
 import { Badge, Btn, GCard } from '@/components/atoms';
@@ -55,6 +55,20 @@ const tdStyle: React.CSSProperties = {
   padding: '10px 10px',
   borderBottom: `1px solid ${gDS.border}`,
   whiteSpace: 'nowrap',
+};
+
+// ตารางคำขอนำรถ: แสดง 10 แถว ที่เหลือเลื่อนดูในการ์ด (ทำตามตารางรายการลงทะเบียน)
+const VEHICLE_VISIBLE_ROWS = 10;
+
+const stickyThStyle: React.CSSProperties = {
+  ...thStyle,
+  position: 'sticky',
+  top: 0,
+  background: '#fff',
+  zIndex: 1,
+  // border-collapse ทำให้เส้นขอบของ th ที่ sticky หายตอนเลื่อน — ใช้ inset shadow แทน
+  borderBottom: 'none',
+  boxShadow: `inset 0 -2px 0 ${gDS.border}`,
 };
 
 const alertStyle: React.CSSProperties = {
@@ -118,6 +132,25 @@ export default function VehicleRequests({
     () => rows.filter((r) => matchesCompanyFilter(r.company, companyFilter, customCompany)),
     [rows, companyFilter, customCompany],
   );
+
+  // จำกัดความสูงกล่องตารางให้พอดี 10 แถวแรก (แถวสูงไม่เท่ากันเพราะบางแถวมีปุ่ม) — เกินกว่านั้นเลื่อนดู
+  const vehicleBoxRef = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    const box = vehicleBoxRef.current;
+    const table = box?.querySelector('table');
+    const bodyRows = table?.tBodies[0]?.rows;
+    const head = table?.tHead;
+    if (!box || !bodyRows || !head) return;
+    if (bodyRows.length <= VEHICLE_VISIBLE_ROWS) {
+      box.style.maxHeight = '';
+      return;
+    }
+    let h = head.getBoundingClientRect().height;
+    for (let i = 0; i < VEHICLE_VISIBLE_ROWS; i++) {
+      h += bodyRows[i].getBoundingClientRect().height;
+    }
+    box.style.maxHeight = `${Math.ceil(h)}px`;
+  }, [filtered, loading]);
 
   const pendingCount = filtered.filter((r) => r.syncStatus === 'PENDING').length;
   const syncedCount = filtered.filter((r) => r.syncStatus === 'SYNCED').length;
@@ -197,22 +230,22 @@ export default function VehicleRequests({
         </div>
       )}
 
-      <div style={{ overflow: 'auto' }}>
+      <div ref={vehicleBoxRef} style={{ overflow: 'auto' }}>
         <table style={{ width: '100%', borderCollapse: 'collapse' }}>
           <thead>
             <tr>
-              <th style={thStyle}>สถานะ EPRO</th>
-              <th style={thStyle}>วันที่ส่ง EPRO</th>
-              <th style={thStyle}>{VEHICLE_LABELS.plateNumber}</th>
-              <th style={thStyle}>{VEHICLE_LABELS.plateProvince}</th>
-              <th style={thStyle}>{VEHICLE_LABELS.driverName}</th>
-              <th style={thStyle}>{VEHICLE_LABELS.company}</th>
-              <th style={thStyle}>{VEHICLE_LABELS.plant}</th>
-              <th style={thStyle}>{VEHICLE_LABELS.location}</th>
-              <th style={thStyle}>เข้า</th>
-              <th style={thStyle}>ออก</th>
-              <th style={thStyle}>{VEHICLE_LABELS.contactTel}</th>
-              <th style={thStyle}>วันที่บันทึก</th>
+              <th style={stickyThStyle}>สถานะ EPRO</th>
+              <th style={stickyThStyle}>วันที่ส่ง EPRO</th>
+              <th style={stickyThStyle}>{VEHICLE_LABELS.plateNumber}</th>
+              <th style={stickyThStyle}>{VEHICLE_LABELS.plateProvince}</th>
+              <th style={stickyThStyle}>{VEHICLE_LABELS.driverName}</th>
+              <th style={stickyThStyle}>{VEHICLE_LABELS.company}</th>
+              <th style={stickyThStyle}>{VEHICLE_LABELS.plant}</th>
+              <th style={stickyThStyle}>{VEHICLE_LABELS.location}</th>
+              <th style={stickyThStyle}>เข้า</th>
+              <th style={stickyThStyle}>ออก</th>
+              <th style={stickyThStyle}>{VEHICLE_LABELS.contactTel}</th>
+              <th style={stickyThStyle}>วันที่บันทึก</th>
             </tr>
           </thead>
           <tbody>
