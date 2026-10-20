@@ -40,8 +40,8 @@ const GATEPASS_URL = process.env.GATEPASS_URL ?? 'http://localhost:4009';
 const API_KEY = requireEnv('INTEGRATION_API_KEY');
 const HEADLESS = process.env.HEADLESS === 'true' || process.env.HEADLESS === '1';
 
-// กฎของ epro: เวลาเริ่มต้องห่างจากตอนกด Save อย่างน้อย 1 ชั่วโมง
-const LEAD_MINUTES = 60;
+// ด่าน pre-flight: ข้ามคำขอที่เวลาเริ่มเหลือน้อยกว่าค่านี้ (นาที)
+const LEAD_MINUTES = 10;
 
 // ปฏิเสธการรันถ้ายังมี selector ที่เป็น placeholder
 const flat = (obj, prefix = '') =>
@@ -145,8 +145,8 @@ try {
         `${vehicle.startDate} ${vehicle.startTime} → ${vehicle.endDate} ${vehicle.endTime}`,
     );
 
-    // ── pre-flight: กฎ 1 ชั่วโมงของ epro ──
-    // ถ้าเวลาเริ่มเหลือน้อยกว่า 1 ชม. แล้ว epro จะปฏิเสธแน่ ๆ และ retry ยิ่งแย่ลง
+    // ── pre-flight: ข้ามคำขอที่เวลาเริ่มใกล้เกินไป ──
+    // ถ้าเวลาเริ่มเหลือน้อยกว่า LEAD_MINUTES นาที แล้ว epro จะปฏิเสธและ retry ยิ่งแย่ลง
     // เพราะเวลาเดินหน้า จึงไม่ส่งเลยและรายงานเป็น permanent เพื่อตัด auto-retry
     const startAt = thaiInstant(vehicle.startDate, vehicle.startTime);
     const minsLeft = Math.floor((startAt.getTime() - Date.now()) / 60_000);
