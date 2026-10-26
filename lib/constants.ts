@@ -19,6 +19,12 @@ export const gDS = {
 // จำนวนแรงงานสูงสุดต่อการส่ง 1 ครั้ง
 export const MAX_WORKERS_PER_SUBMIT = 10;
 
+// จำนวนแรงงานสูงสุดต่อเอกสาร EPRO 1 ใบ (ข้อจำกัดของ eprocurement.syssteel.com)
+// แยกจาก MAX_WORKERS_PER_SUBMIT ซึ่งเป็นข้อจำกัดของฟอร์มลงทะเบียนฝั่ง contractor —
+// หลายใบลงทะเบียนอาจรวมเป็นใบงานกลุ่มเดียว (company+date+zone) เกิน 10 คนได้
+// ค่านี้ใช้ตอน claim เพื่อหยิบคนงานไม่เกิน 10 คนต่อการส่ง RPA 1 รอบ
+export const MAX_WORKERS_PER_ORDER = 10;
+
 // ช่วงวันทำงานที่อนุญาต: วันสิ้นสุดต้องห่างจากวันเริ่ม 1–6 วัน (ห้ามวันเดียวกัน)
 export const MIN_SPAN_DAYS = 1;
 export const MAX_SPAN_DAYS = 6;

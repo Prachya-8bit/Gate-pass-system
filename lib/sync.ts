@@ -8,6 +8,22 @@ export function groupKey(r: { company: string; startDate: string; endDate: strin
   return [r.company, r.startDate, r.endDate, r.zone ?? ''].join('|');
 }
 
+// batchKey ระดับ chunk — กลุ่มเดียว (company+date+zone) อาจเกิน MAX_WORKERS_PER_ORDER
+// จึงถูกหยิบเป็นหลาย chunk คนละรอบ claim ถ้าใช้ groupKey ล้วนเป็น batchKey ทุก chunk
+// จะชนกัน ทำให้ report ของ chunk หนึ่งไป match แถวของอีก chunk ที่ค้าง SYNCING อยู่
+// (เช่น สอง run คาบเกี่ยวกัน) จึงผูก batchKey กับชุด record id ที่หยิบมาจริง เรียงแล้ว
+// hash สั้นแบบ deterministic (djb2) — ไม่ต้องพึ่ง crypto และสั้นพอจะอ่าน log ได้
+export function chunkBatchKey(groupK: string, sortedIds: string[]): string {
+  let h = 5381;
+  for (const id of sortedIds) {
+    for (let i = 0; i < id.length; i++) {
+      h = (h * 33) ^ id.charCodeAt(i);
+    }
+  }
+  // >>> 0 เพื่อให้เป็น unsigned 32-bit แล้วแปลงเป็น base36 ให้สั้น
+  return `${groupK}#${(h >>> 0).toString(36)}`;
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // นโยบายของ claim/report — เก็บไว้ที่เดียวเพื่อให้ทุกตารางที่ sync เข้า EPRO
 // (Record วันนี้ และตารางอื่นในอนาคต) ใช้กฎเดียวกัน
